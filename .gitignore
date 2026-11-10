@@ -2,3 +2,7 @@
 *.dep
 recfriior5/recfriio
 arib25/b25
+tools/probe_bcas
+*.ts
+*.log
+
