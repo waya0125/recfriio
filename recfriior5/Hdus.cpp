@@ -216,11 +216,27 @@ Hdus::getStream(const uint8_t** bufp, int timeoutMsec)
     while( 1 ){
 
         // 同期
-        size_t pos_sync = pos;
-        while( pos < buffersize && buffer[ pos ] != 0x47 ) ++pos;
-        if( pos_sync != pos ){
-            if (log) *log << "sync " << pos - pos_sync << " bytes" << std::endl;
+        if( buffer[ pos ] != 0x47 ){
+            size_t pos_sync = pos;
+            while( pos < buffersize ){
+                if( buffer[ pos ] == 0x47 ){
+                    if( pos + tssize < buffersize && buffer[ pos + tssize ] != 0x47 ){
+                        ++pos;
+                        continue;
+                    }
+                    if( pos + tssize * 2 < buffersize && buffer[ pos + tssize * 2 ] != 0x47 ){
+                        ++pos;
+                        continue;
+                    }
+                    break;
+                }
+                ++pos;
+            }
+            if( pos_sync != pos && log ){
+                *log << "resync: skipped " << pos - pos_sync << " bytes" << std::endl;
+            }
         }
+
         if( buffersize - pos < tssize ){
             buffer_remainsize = buffersize - pos;
             break;
