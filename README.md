@@ -104,8 +104,9 @@ sudo ./tools/compare_tuners.sh
 
 本リポジトリに含まれる各コンポーネントのライセンスは以下の通りです。詳細は `licenses/` ディレクトリ内の各ファイルをご確認ください。
 
-- **recfriio / as11loader / 追加ツール群**: [2-Clause BSD License](licenses/LICENSE.recfriio) (Copyright (c) FUKAUMI Naoki / KASHIWAYA Rikuto)
+- **recfriio / as11loader**: [2-Clause BSD License](licenses/LICENSE.recfriio) (Copyright (c) FUKAUMI Naoki)
 - **arib25**: [仕様確認テストプログラム ライセンス](licenses/LICENSE.arib25) (Copyright (c) 茂木 和洋)
+- **追加ツール群・ドキュメント (`tools/`, `firmware/load_firmware.sh`, `docs/`)**: [MIT License](licenses/LICENSE.mit) (Copyright (c) 2026 KASHIWAYA Rikuto)
 
 ---
 
