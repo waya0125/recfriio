@@ -94,6 +94,7 @@ sudo ./tools/compare_tuners.sh
 │   └── analyze_ts.py    # TS パケット精密解析スクリプト
 ├── docs/                # 詳細仕様書 & 原文ドキュメント
 │   ├── QRS-UT100B.md    # QRS-UT100B 動作仕様 & 品質レポート
+│   ├── modernization_design.md # 将来のRust統一モダナイズ詳細設計書
 │   └── original_readmes/# 過去バージョン (STZ版, HDUS, arib25) 原文 README
 └── licenses/            # 各コンポーネントのライセンスファイル
 ```
