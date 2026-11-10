@@ -212,6 +212,7 @@ Hdus::getStream(const uint8_t** bufp, int timeoutMsec)
 //    fprintf( stderr, " -> buffersize = %d, remainsize = %d", buffersize, buffer_remainsize );
 
     size_t pos = 0;
+    size_t out_len = 0;
     while( 1 ){
 
         // 同期
@@ -231,19 +232,22 @@ Hdus::getStream(const uint8_t** bufp, int timeoutMsec)
             // XOR
             for( int i = 4; i < 188; i++)
                 buf[i] ^= xorTable[i - 4];
+            if (out_len != pos) {
+                memcpy(buffer + out_len, buf, 188);
+            }
         } else {
             // DES
             static unsigned char tmp[188];
             memcpy(tmp, buf, 188);
-            packetDecrypt(tmp, buf, 1);
+            packetDecrypt(tmp, buffer + out_len, 1);
         }
 
         pos += tssize;
+        out_len += tssize;
     }
 
-//    fprintf( stderr, "-> pos = %d\n", pos );
-
-    return pos;
+    *bufp = buffer;
+    return out_len;
 }
 
 
@@ -263,7 +267,7 @@ Hdus::is_friio(const std::string &devfile)
         return false;
     }
     
-    if ( TARGET_ID_VENDOR_HDUS == usb_desc.idVendor && TARGET_ID_PRODUCT_HDUS == usb_desc.idProduct) {
+    if ( TARGET_ID_VENDOR_HDUS == usb_desc.idVendor && (TARGET_ID_PRODUCT_HDUS == usb_desc.idProduct || TARGET_ID_PRODUCT_UT100B == usb_desc.idProduct)) {
         return true;
     } else {
         return false;

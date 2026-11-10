@@ -266,6 +266,7 @@ Hdp::getStream(const uint8_t** bufp, int timeoutMsec)
 //    fprintf( stderr, " -> buffersize = %d, remainsize = %d", buffersize, buffer_remainsize );
 
     size_t pos = 0;
+    size_t out_len = 0;
     while( 1 ){
 
         // 同期
@@ -279,18 +280,17 @@ Hdp::getStream(const uint8_t** bufp, int timeoutMsec)
             break;
         }
 
-	// decrpyt
-        uint8_t *buf = buffer + pos;
+	// decrypt
 	uint8_t tmp[188];
-	memcpy(tmp, buf, 188);
-	packetDecrypt(tmp, buf, 1);
+	memcpy(tmp, buffer + pos, 188);
+	packetDecrypt(tmp, buffer + out_len, 1);
 
         pos += tssize;
+        out_len += tssize;
     }
 
-//    fprintf( stderr, "-> pos = %d\n", pos );
-
-    return pos;
+    *bufp = buffer;
+    return out_len;
 }
 
 
@@ -318,8 +318,8 @@ Hdp::is_friio(const std::string &devfile)
 		if (log) *log << "HDP Type: LDT-FS100U" << std::endl;
         	tunerCount = 1;
 		return true;
-	} else if ( TARGET_ID_VENDOR_HDUS == usb_desc.idVendor && TARGET_ID_PRODUCT_HDP == usb_desc.idProduct) {
-		if (log) *log << "HDP Type: HDP" << std::endl;
+	} else if ( TARGET_ID_VENDOR_HDUS == usb_desc.idVendor && (TARGET_ID_PRODUCT_HDP == usb_desc.idProduct || TARGET_ID_PRODUCT_UT100B == usb_desc.idProduct)) {
+		if (log) *log << "HDP Type: HDP (QRS-UT100B)" << std::endl;
         	tunerCount = 1;
 		return true;
 	} else if ( TARGET_ID_VENDOR_HDUS == usb_desc.idVendor && TARGET_ID_PRODUCT_HDP2 == usb_desc.idProduct) {

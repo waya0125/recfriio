@@ -113,13 +113,16 @@ PopIoThread::operator()() {
 	while(!is_cancelled) {
 		FD_ZERO(&readfds);
 		FD_SET(event_fd_pop, &readfds);
+		FD_SET(fd, &readfds);
 
 		FD_ZERO(&writefds);
 		FD_SET(fd, &writefds);
 		
 		int maxfd = MAX(fd, event_fd_pop);
-		int r = select(maxfd+1, &readfds, &writefds, NULL, NULL);
+		struct timeval tv = { 0, 100000 };
+		int r = select(maxfd+1, &readfds, &writefds, NULL, &tv);
 		if (r < 0) {
+			if (errno == EINTR) continue;
 			err(1, "select failed.");
 		}
 		
@@ -132,7 +135,7 @@ PopIoThread::operator()() {
 			}
 		}
 		
-		if (FD_ISSET(fd, &writefds)) {
+		if (FD_ISSET(fd, &readfds) || FD_ISSET(fd, &writefds)) {
 			// usbfsから何か来た
 			reapUrbs();
 		}

@@ -13,9 +13,9 @@
  * URB送信管理用
  */
 struct AsyncRequest {
-	usbdevfs_urb urb;
 	int fd;
 	uint8_t buf[TSDATASIZE];
+	usbdevfs_urb urb;
 };
 
 /**

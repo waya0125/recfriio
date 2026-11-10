@@ -7,6 +7,7 @@
 #include <iostream>
 #include <exception>
 #include <stdexcept>
+#include <cstddef>
 #include <boost/thread.hpp>
 #include <boost/thread/condition.hpp>
 #include <boost/version.hpp>
@@ -81,12 +82,12 @@ protected:
 	
 	// リングバッファのノード
 	struct Node {
-		T data;     // データ本体
 		Node *next; // 次
 		boost::xtime timeout; // タイムアウト時刻
 		void (*timeout_handler)(T *); // タイムアウトハンドラ
 		bool is_wait;  // 書込み中?
 		bool is_ready; // 読込み可能か？
+		T data;     // データ本体
 	};
 	
 	bool is_overflow;
@@ -186,7 +187,7 @@ RingBuf<T>::setReady(T *node) {
 		throw overflow_error("RingBuf was overflowed.");
 	}
 	
-	Node *real_node = reinterpret_cast<Node *>(node);
+	Node *real_node = (Node *)((char *)node - offsetof(Node, data));
 	if (real_node->is_wait) {
 		real_node->is_ready = true;
 		ready_count++;

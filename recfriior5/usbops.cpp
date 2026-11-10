@@ -24,7 +24,7 @@
  * @exception usb_error 失敗時
  */
 void
-usb_getdesc(const char *devfile, usb_device_descriptor* desc) throw (usb_error)
+usb_getdesc(const char *devfile, usb_device_descriptor* desc) 
 {
 	int f = open(devfile, O_RDONLY);
 	if (-1 == f) {
@@ -51,7 +51,7 @@ usb_getdesc(const char *devfile, usb_device_descriptor* desc) throw (usb_error)
  * @exception usb_error 失敗時
  */
 int
-usb_open(const char *devfile) throw (usb_error)
+usb_open(const char *devfile) 
 {
 	// open
 	int fd = open(devfile, O_RDWR);
@@ -72,7 +72,7 @@ usb_open(const char *devfile) throw (usb_error)
  * @exception usb_error USBのエラー時
  */
 std::string
-usb_getdriver(int fd, int interface) throw (usb_error)
+usb_getdriver(int fd, int interface) 
 {
 	usbdevfs_getdriver driver_info;
 	memset(&driver_info, '\0', sizeof(usbdevfs_getdriver));
@@ -101,7 +101,7 @@ usb_getdriver(int fd, int interface) throw (usb_error)
  * @exception usb_error USBのエラー時
  */
 void
-usb_setinterface(int fd, int interface, int altsetting) throw (usb_error)
+usb_setinterface(int fd, int interface, int altsetting) 
 {
 	usbdevfs_setinterface interface_info;
 	interface_info.interface  = interface;
@@ -124,7 +124,7 @@ usb_setinterface(int fd, int interface, int altsetting) throw (usb_error)
  * @exception busy_error 使用中
  */
 void
-usb_claim(int fd, unsigned int interface) throw (busy_error, usb_error)
+usb_claim(int fd, unsigned int interface) 
 {
 	int r = ioctl(fd, USBDEVFS_CLAIMINTERFACE, &interface);
 	if (r < 0) {
@@ -147,7 +147,7 @@ usb_claim(int fd, unsigned int interface) throw (busy_error, usb_error)
  * @exception usb_error USBのエラー時
  */
 void
-usb_release(int fd, unsigned int interface) throw (usb_error)
+usb_release(int fd, unsigned int interface) 
 {
 	int r = ioctl(fd, USBDEVFS_RELEASEINTERFACE, &interface);
 	if (r < 0) {
@@ -166,7 +166,7 @@ usb_release(int fd, unsigned int interface) throw (usb_error)
  * @exception usb_error USBのエラー時
  */
 int
-usb_ctrl(int fd, usbdevfs_ctrltransfer *ctrl) throw (usb_error)
+usb_ctrl(int fd, usbdevfs_ctrltransfer *ctrl) 
 {
 	int r = ioctl(fd, USBDEVFS_CONTROL, ctrl);
 	if (r < 0) {
@@ -226,7 +226,7 @@ usb_discardurb(int fd, usbdevfs_urb* urbp)
  * @exception usb_error USBのエラー時
  */
 int
-usb_ctrl_sends(int fd, uint16_t data[], size_t length,  uint8_t *rcvbuf, size_t recv_len) throw (usb_error)
+usb_ctrl_sends(int fd, uint16_t data[], size_t length,  uint8_t *rcvbuf, size_t recv_len) 
 {
   usbdevfs_ctrltransfer ctrl;
   uint i, n;

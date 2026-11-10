@@ -644,7 +644,7 @@ main(int argc, char *argv[])
 
 #ifdef TSSL
 	/* initialize splitter */
-	splitbuf_t splitbuf;
+	static splitbuf_t splitbuf;
 	splitbuf.size = 0;
 	splitter *splitter = NULL;
 	int split_select_finish = TSS_ERROR;
@@ -726,6 +726,7 @@ main(int argc, char *argv[])
 	
 	// 出力開始/時間計測
 	log << "Output ts file." << std::endl;
+	time_start = time(NULL);
 	if (gettimeofday(&tv_start, NULL) < 0) {
 		std::cerr << "gettimeofday failed." << std::endl;
 		exit(1);
@@ -865,6 +866,7 @@ main(int argc, char *argv[])
 				}
 				urb_error_cnt++;
 			}
+#ifdef B25
 		} catch (b25_error& e) {
 			if (b25_error_cnt <= B25_ERROR_MAX) {
 				if(b25_error_cnt == B25_ERROR_MAX){
@@ -875,6 +877,7 @@ main(int argc, char *argv[])
 				}
 				b25_error_cnt++;
 			}
+#endif
 		}
 	}
 	if (caughtSignal) {
