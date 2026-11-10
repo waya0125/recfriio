@@ -119,7 +119,7 @@ PopIoThread::operator()() {
 		FD_SET(fd, &writefds);
 		
 		int maxfd = MAX(fd, event_fd_pop);
-		struct timeval tv = { 0, 100000 };
+		struct timeval tv = { 0, 5000 };
 		int r = select(maxfd+1, &readfds, &writefds, NULL, &tv);
 		if (r < 0) {
 			if (errno == EINTR) continue;

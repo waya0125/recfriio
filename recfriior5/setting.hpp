@@ -28,10 +28,10 @@ const unsigned int WHITE_REQUEST_POLLING_WAIT = 10; // 非同期リクエスト�
 const unsigned int BLACK_REQUEST_RESERVE_NUM  = 24; // 非同期リクエスト予約数
 const unsigned int BLACK_REQUEST_POLLING_WAIT = 7; // 非同期リクエストポーリング間隔(ms)
 #ifdef HDUS
-const unsigned int HDUS_REQUEST_RESERVE_NUM  = WHITE_REQUEST_RESERVE_NUM;
-const unsigned int HDUS_REQUEST_POLLING_WAIT = WHITE_REQUEST_POLLING_WAIT;
-const unsigned int HDP_REQUEST_RESERVE_NUM   = WHITE_REQUEST_RESERVE_NUM;
-const unsigned int HDP_REQUEST_POLLING_WAIT  = WHITE_REQUEST_POLLING_WAIT;
+const unsigned int HDUS_REQUEST_RESERVE_NUM  = 32;
+const unsigned int HDUS_REQUEST_POLLING_WAIT = 2;
+const unsigned int HDP_REQUEST_RESERVE_NUM   = 32;
+const unsigned int HDP_REQUEST_POLLING_WAIT  = 2;
 #endif
 
 const unsigned int REQUEST_TIMEOUT    = 1000; // USBリクエストタイムアウト(ms)
