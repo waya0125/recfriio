@@ -1,0 +1,20 @@
+# Licenses
+
+本リポジトリに含まれる各コンポーネントのライセンスは以下の通りです。
+それぞれの詳細な条項は `licenses/` ディレクトリ内の各ファイルをご確認ください。
+
+1. **recfriio (本体)**
+   - 著作権者: FUKAUMI Naoki
+   - ライセンス: 2-Clause BSD License (`licenses/LICENSE.recfriio`)
+
+2. **as11loader**
+   - 著作権者: FUKAUMI Naoki
+   - ライセンス: 2-Clause BSD License (`licenses/LICENSE.as11loader`)
+
+3. **arib25 (B25 復号ライブラリ)**
+   - 著作権者: 茂木 和洋 (MOGI, Kazuhiro)
+   - 条件: 免責条項同意による諸権利不行使 (`licenses/LICENSE.arib25`)
+
+4. **追加ツール群 (tools/, firmware/load_firmware.sh)**
+   - 著作権者: KASHIWAYA Rikuto (waya0125)
+   - ライセンス: 2-Clause BSD License (`licenses/LICENSE.recfriio` に準拠)
