@@ -89,15 +89,16 @@ static const uint8_t I2C_CARD_HDUS = 0x5a, I2C_CARD_HDP = 0x4a; // ASIE5606（�
 
 // ---- TC90522 地上波側のレジスタ（coax の demod/tc90522 と Linux の tc90522 に合わせた）----
 static const uint8_t TC_T_AGC_1     = 0x01; // AGC の設定（coax の SetAGCT と同じ組）
-static const uint8_t TC_T_1C        = 0x1c; // 制御。PLEX は選局で 0x1c を読んで bit 4・5 を立て、少し待って bit 4 を落とす
+static const uint8_t TC_T_1C        = 0x1c; // 制御。PLEX は選局で 0x1c を読んで bit 4・5 を立て、少し待って bit 4 を落とす。
+                                            // 元のコードは 0x9d を読んだ値（いつも 0）から 0x1c を作っていて、初期化の表で
+                                            // 立てた bit 1 を消していた。0x1c を読んで書き戻す形に直した（9 チャンネルで比べて
+                                            // 受信に違いは無かった。2026-11-11）
 static const uint8_t TC_T_1E        = 0x1e; // 出力の線の設定と見られる。PLEX は周波数（約 261 MHz の上下）で bit 4・5 を変える
 static const uint8_t TC_T_1F        = 0x1f; // 0x1e と組で選局の前後に書く（意味は未確認）
 static const uint8_t TC_T_AGC_23    = 0x23; // AGC。bit 0 が自動（0x4d）か止める（0x4c）か
 static const uint8_t TC_T_AGC_25    = 0x25; // AGC の設定（coax の SetAGCT と同じ組）
 static const uint8_t TC_T_CNDAT     = 0x8b; // C/N の生の値（0x8b..0x8d の 24 ビット）
-static const uint8_t TC_T_9D        = 0x9d; // 状態。PLEX は BER・SNR を測るときに最初に読む。
-                                            // ここで 0x9d を読んで 0x1c を作るのは、元のコードが 0x1c を読むつもりだった
-                                            // 可能性が高い（PLEX は 0x1c を読んで書き戻す）。動いているので値はそのまま
+static const uint8_t TC_T_9D        = 0x9d; // 状態。PLEX は BER・SNR を測るときに最初に読む（ここでは使っていない）
 static const uint8_t TC_REPEATER    = 0xfe; // ここに書くと、続くバイトがチューナーへ中継される
 
 // ---- ASIE5606 のレジスタ ----
@@ -273,7 +274,7 @@ Hdp::setChannel(BandType newBand, int newChannel)
     const uint16_t freqCode = freq * 64; // 1/64 MHz 単位
 
     /* 選局の前の復調部の設定 */
-    regWrite(I2C_DEMOD, TC_T_1C, (regRead(I2C_DEMOD, TC_T_9D) & 0xfb) | 0x38);
+    regWrite(I2C_DEMOD, TC_T_1C, (regRead(I2C_DEMOD, TC_T_1C) & 0xfb) | 0x38);
     regWrite(I2C_DEMOD, TC_T_AGC_25, 0x00);
     regWrite(I2C_DEMOD, TC_T_AGC_23, 0x4d);
     regWrite(I2C_DEMOD, TC_T_1E, 0xaa);
@@ -525,7 +526,7 @@ Hdp::UsbProcBegin(int fd)
     for (size_t i = 0; i < sizeof(demodInitRegs); i++) {
         regWrite(I2C_DEMOD, demodInitRegs[i], demodInitValues[i]);
     }
-    regWrite(I2C_DEMOD, TC_T_1C, (regRead(I2C_DEMOD, TC_T_9D) & 0xeb) | 0x28);
+    regWrite(I2C_DEMOD, TC_T_1C, (regRead(I2C_DEMOD, TC_T_1C) & 0xeb) | 0x28);
     for (size_t i = 0; i < sizeof(tunerInit) / sizeof(tunerInit[0]); i++) {
         tunerWrite(tunerInit[i][0], tunerInit[i][1]);
     }
