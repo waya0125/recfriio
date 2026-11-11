@@ -75,9 +75,17 @@ sudo ./tools/probe_bcas
 ### 3. 録画の実行
 ```bash
 # 基本構文: recfriio [オプション] <チャンネル> <録画秒数> <出力ファイル名>
-# 例: NHK総合 (19ch) を 30 秒間録画
-sudo ./recfriior5/recfriio --hdp 19 30 nhk.ts
+# 例: NHK総合 (19ch) を 30 秒間録画（スクランブルされたまま）
+./recfriior5/recfriio --hdp 19 30 nhk.ts
+
+# 本体内蔵の B-CAS スロットで復号しながら録画（外付けのカードリーダーは不要）
+./recfriior5/recfriio --hdp --b25 19 30 nhk.ts
+
+# 外付けのカードリーダー（PC/SC）で復号する場合
+./recfriior5/recfriio --hdp --b25 --pcsc 19 30 nhk.ts
 ```
+
+`/dev/bus/usb` の権限が無い場合は root で実行するか、udev で `3275:7020` に権限を与えてください。
 
 ### 4. 複数チューナー同時品質比較テスト
 `coaxd` で稼働中の PT3、torne、および QRS-UT100B を同一タイミングで録画し、TS パケット品質（同期エラー、TEI エラー、パケットドロップ、PCR Gaps）を自動測定・比較します：
