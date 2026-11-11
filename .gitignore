@@ -12,3 +12,4 @@ firmware/*.bin
 firmware/*.sys
 firmware/*.inf
 __pycache__/
+test_descramble

@@ -15,7 +15,7 @@ ifdef B25
 endif
 
 ifdef HDUS
-  HDUS_OBJS = Hdus.o Hdp.o
+  HDUS_OBJS = Hdus.o Hdp.o AsieDescrambler.o
 endif
 
 ifdef UDP
@@ -40,7 +40,13 @@ LIBS     = -lpthread `pkg-config --libs glib-2.0`
 all: $(TARGET)
 
 clean: $(B25_CLEAN)
-	rm -f $(OBJS) $(TARGET) $(DEPEND)
+	rm -f $(OBJS) $(TARGET) $(DEPEND) test_descramble
+
+test: test_descramble
+	./test_descramble
+
+test_descramble: test_descramble.cpp AsieDescrambler.cpp AsieDescrambler.hpp
+	$(CXX) -O2 -Wall -std=c++17 -o $@ test_descramble.cpp AsieDescrambler.cpp
 
 uninstall:
 	rm -vf $(PREFIX)/bin/$(TARGET) /etc/udev/rules.d/99-friio.rules

@@ -28,7 +28,7 @@
 #include <stdio.h>
 #include "usbops.hpp"
 #include "Hdus.hpp"
-#include "decrypt.c"
+#include "AsieDescrambler.hpp"
 
 static uint8_t xorTable[] = {
   0x6D, 0x4E, 0xF0, 0x1E, 0x59, 0x8B, 0xB2, 0xF0, 0x31, 0xF9, 0xD0, 0x85, 0xDD, 0x84, 0x4A, 0x6C,
@@ -257,7 +257,7 @@ Hdus::getStream(const uint8_t** bufp, int timeoutMsec)
             // DES
             static unsigned char tmp[188];
             memcpy(tmp, buf, 188);
-            packetDecrypt(tmp, buffer + out_len, 1);
+            asieDescramblePacket(tmp, buffer + out_len);
         }
 
         pos += tssize;

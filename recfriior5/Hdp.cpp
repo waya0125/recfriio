@@ -30,7 +30,7 @@
 #include "usbops.hpp"
 #include "Hdp.hpp"
 
-#include "decrypt.c"
+#include "AsieDescrambler.hpp"
 
 Hdp::Hdp()
     : AbstractFriio(), saddr( 0 ), buffer( NULL )
@@ -408,7 +408,7 @@ Hdp::getStream(const uint8_t** bufp, int timeoutMsec)
 	// decrypt
 	uint8_t tmp[188];
 	memcpy(tmp, buffer + pos, 188);
-	packetDecrypt(tmp, buffer + out_len, 1);
+	asieDescramblePacket(tmp, buffer + out_len);
 
         pos += tssize;
         out_len += tssize;
