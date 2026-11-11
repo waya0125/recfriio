@@ -51,11 +51,19 @@ make
 
 ## 使い方
 
-### 1. QRS-UT100B のファームウェア初期化 (初回接続時のみ)
-UT100B を PC に接続した直後のコールド状態からウォーム状態へ立ち上げます：
+### 1. QRS-UT100B のファームウェア初期化 (接続のたびに)
+UT100B は電源が入るたびに、ファームの無い状態（`1738:5211`）で起動します。ファームを送ると `3275:7020` として出直します。
+
+ファームはメーカーの著作物なので、このリポジトリには含めていません。**製品付属の CD-ROM にある `Driver/Quixun_AS11Loader.sys` から取り出して使います。** 対応している `.sys` は、ROBRO Origin 版（1.08.11.17）と ROBRO Origin+（forNetbook）版（1.09.02.19）の 2 つです。取り出す際に SHA-256 でファイルと取り出したファームの両方を確かめます。
+
 ```bash
+# 初回: CD の .sys を渡すと、firmware/asv5211-firmware.bin に取り出してから送る
+./firmware/load_firmware.sh /path/to/CD/ROBRO_Origin/Driver/Quixun_AS11Loader.sys
+# 2 回目以降
 ./firmware/load_firmware.sh
 ```
+
+送るには `/dev/bus/usb` の書き込み権限が要ります（root で実行するか、udev で `1738:5211` と `3275:7020` に権限を与えてください）。
 
 ### 2. 内蔵 B-CAS カードスロットの動作確認
 本体内蔵スロットに B-CAS カードを挿入した状態で、正常にカード情報が読めるかテストします：
@@ -85,10 +93,10 @@ sudo ./tools/compare_tuners.sh
 ├── recfriior5/          # recfriio 本体ソースコード
 ├── arib25/              # ARIB STD-B25 復号ライブラリ
 ├── as11loader/          # AS11 ファームウェアローダーソース
-├── firmware/            # UT100B ファームウェア & 投入スクリプト
-│   ├── asv5211-firmware.bin
+├── firmware/            # ファーム投入スクリプト（ファーム本体は含まない）
 │   └── load_firmware.sh
 ├── tools/               # 調査・品質検証ツール群
+│   ├── ut100b-firmware.py # 付属 CD からのファーム取り出し・投入
 │   ├── probe_bcas.c     # 内蔵 B-CAS (ASIE5606) 制御ツール
 │   ├── compare_tuners.sh# 3 チューナー同時品質比較スクリプト
 │   └── analyze_ts.py    # TS パケット精密解析スクリプト

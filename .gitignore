@@ -6,3 +6,9 @@ tools/probe_bcas
 *.ts
 *.log
 
+
+# メーカーのファーム・ドライバーは入れない（tools/ut100b-firmware.py で付属 CD から取り出す）
+firmware/*.bin
+firmware/*.sys
+firmware/*.inf
+__pycache__/

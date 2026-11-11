@@ -1,37 +1,17 @@
 #!/bin/bash
-set -e
-
+# QRS-UT100B にファームを送る（ファームの無い状態 1738:5211 → 3275:7020）。
+#   ./firmware/load_firmware.sh [付属 CD の Quixun_AS11Loader.sys]
+# firmware/asv5211-firmware.bin が無ければ、渡された .sys から先に取り出す。
+# ファームはメーカーの著作物なので、リポジトリには入れていない（README の「ファームウェア」を参照）。
+set -eu
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOL="$DIR/../tools/ut100b-firmware.py"
 FW="$DIR/asv5211-firmware.bin"
-
 if [ ! -f "$FW" ]; then
-    echo "ERROR: Firmware not found at $FW"
-    exit 1
-fi
-
-echo "Checking for cold ASV52xx device (1738:5211)..."
-if ! lsusb -d 1738:5211 >/dev/null 2>&1; then
-    if lsusb -d 3275:7020 >/dev/null 2>&1; then
-        echo "Device is already warmed up as Quixun HDTV (3275:7020). No loading needed."
-        exit 0
-    else
-        echo "No ASV52xx or Quixun device detected."
+    if [ $# -lt 1 ]; then
+        echo "ファーム（$FW）がありません。付属 CD の Driver/Quixun_AS11Loader.sys を引数で渡してください。" >&2
         exit 1
     fi
+    python3 "$TOOL" extract "$1" -o "$FW"
 fi
-
-echo "Cold ASV52xx device found. Loading firmware..."
-docker run --rm --privileged \
-    -v /dev/bus/usb:/dev/bus/usb \
-    -v "$FW:/firmware.bin:ro" \
-    -v /home/waya/claude-work/torne/trial/bin-0.1.5/coaxd:/coaxd:ro \
-    alpine /coaxd load-asv52xx-firmware -firmware /firmware.bin
-
-echo "Waiting for device re-enumeration..."
-sleep 2
-
-if lsusb -d 3275:7020 >/dev/null 2>&1; then
-    echo "SUCCESS: UT100B re-enumerated as Quixun HDTV (3275:7020)!"
-else
-    echo "WARNING: Device did not re-enumerate as 3275:7020 yet. Check lsusb."
-fi
+python3 "$TOOL" load "$FW"
