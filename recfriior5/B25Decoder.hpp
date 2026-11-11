@@ -32,7 +32,7 @@ public:
 	/**
 	 * コンストラクタ
 	 */
-	B25Decoder() : round(4), strip(false), emm(false), b25(NULL), bcas(NULL) {
+	B25Decoder() : round(4), strip(false), emm(false), b25(NULL), bcas(NULL), cardTransport(NULL) {
 	};
 	
 	/**
@@ -111,6 +111,14 @@ protected:
 	ARIB_STD_B25 *b25;
 	/** BCAS */
 	B_CAS_CARD   *bcas;
+	/** 内蔵スロットのやり取りの口（B_CAS_CARD_TRANSPORT*）。NULL なら PC/SC */
+	const void   *cardTransport;
+
+public:
+	/**
+	 * open() の前に呼ぶ。チューナー内蔵の B-CAS スロットを使う（NULL なら PC/SC のリーダー）。
+	 */
+	void setCardTransport(const void *transport) { cardTransport = transport; }
 };
 
 #endif /* !defined(_B25_H_) */

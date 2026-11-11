@@ -62,11 +62,24 @@ typedef struct {
 	
 } B_CAS_CARD;
 
+/*
+ カードとのやり取りを PC/SC 以外で行うための口（recfriio で追加）。
+ reset: カードの電源を入れて T=1 のやり取りを始める。成功で 0。
+ transmit: APDU を 1 つ送り、応答（SW1 SW2 を含む）を resp に入れる。*resp_len は入力で resp の大きさ、
+           出力で応答の長さ。成功で 0。
+*/
+typedef struct B_CAS_CARD_TRANSPORT_ {
+	void *ctx;
+	int (* reset)(void *ctx);
+	int (* transmit)(void *ctx, const uint8_t *cmd, int cmd_len, uint8_t *resp, int *resp_len);
+} B_CAS_CARD_TRANSPORT;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 extern B_CAS_CARD *create_b_cas_card();
+extern B_CAS_CARD *create_b_cas_card_with_transport(const B_CAS_CARD_TRANSPORT *transport);
 
 #ifdef __cplusplus
 }

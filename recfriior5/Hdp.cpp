@@ -555,6 +555,8 @@ Hdp::UsbProcBegin(int fd)
     for (uint8_t reg = CARD_TS_KEY; reg < CARD_TS_KEY + 0x10; reg++)
         regWrite(saddr, reg, 0x00);
 
+    card.reset(new AsieCardReader(fd, saddr, log));
+
     if (log) *log << "done." << std::endl;
 }
 
@@ -568,6 +570,7 @@ Hdp::UsbProcEnd(int fd)
     if( ! saddr ) return;
 
     if (log) *log << "closing HDP...";
+    card.reset();
 
     uint8_t data[0x200];
 

@@ -5,6 +5,8 @@
 
 #include "Recordable.hpp"
 #include "AbstractFriio.hpp"
+#include "AsieCardReader.hpp"
+#include <memory>
 
 
 class Hdp : public AbstractFriio
@@ -19,12 +21,16 @@ class Hdp : public AbstractFriio
 
     int tunerCount;
 
+    // 内蔵 B-CAS スロット（開いている間だけ）
+    std::unique_ptr<AsieCardReader> card;
+
 public:
 	Hdp();
         virtual ~Hdp();
 	virtual void setChannel(BandType band, int channel);
 	virtual const float getSignalLevel(void);
 	virtual int getStream(const uint8_t** bufp, int timeoutMsec);
+	virtual const void *cardTransport() { return card ? card->transport() : NULL; }
 	
 protected:
 

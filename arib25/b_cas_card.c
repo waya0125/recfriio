@@ -32,6 +32,9 @@ typedef struct {
 
 	B_CAS_PWR_ON_CTRL_INFO pwc;
 	int32_t            pwc_max;
+
+	/* PC/SC の代わりに使うやり取りの口（transport.transmit が NULL なら PC/SC） */
+	B_CAS_CARD_TRANSPORT transport;
 	
 } B_CAS_CARD_PRIVATE_DATA;
 
@@ -102,6 +105,24 @@ B_CAS_CARD *create_b_cas_card()
 	return r;
 }
 
+B_CAS_CARD *create_b_cas_card_with_transport(const B_CAS_CARD_TRANSPORT *transport)
+{
+	B_CAS_CARD *r;
+
+	if( (transport == NULL) || (transport->reset == NULL) || (transport->transmit == NULL) ){
+		return NULL;
+	}
+
+	r = create_b_cas_card();
+	if(r == NULL){
+		return NULL;
+	}
+
+	((B_CAS_CARD_PRIVATE_DATA *)(r->private_data))->transport = *transport;
+
+	return r;
+}
+
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  function prottypes (private method)
  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
@@ -110,6 +131,7 @@ static void teardown(B_CAS_CARD_PRIVATE_DATA *prv);
 static int change_id_max(B_CAS_CARD_PRIVATE_DATA *prv, int max);
 static int change_pwc_max(B_CAS_CARD_PRIVATE_DATA *prv, int max);
 static int connect_card(B_CAS_CARD_PRIVATE_DATA *prv, const char *reader_name);
+static LONG card_transmit(B_CAS_CARD_PRIVATE_DATA *prv, DWORD slen, DWORD *rlen);
 static void extract_power_on_ctrl_response(B_CAS_PWR_ON_CTRL *dst, uint8_t *src);
 static void extract_mjd(int *yy, int *mm, int *dd, int mjd);
 static int setup_ecm_receive_command(uint8_t *dst, uint8_t *src, int len);
@@ -148,6 +170,27 @@ static int init_b_cas_card(void *bcas)
 	}
 
 	teardown(prv);
+
+	if(prv->transport.transmit != NULL){
+		/* PC/SC を使わない。リーダーの名前の場所は空にしておく */
+		len = 256;
+		m = len + (2*B_CAS_BUFFER_MAX) + (sizeof(int64_t)*16) + (sizeof(B_CAS_PWR_ON_CTRL)*16);
+		prv->pool = (uint8_t *)calloc(1, m);
+		if(prv->pool == NULL){
+			return B_CAS_CARD_ERROR_NO_ENOUGH_MEMORY;
+		}
+		prv->reader = (char *)(prv->pool);
+		prv->sbuf = prv->pool + len;
+		prv->rbuf = prv->sbuf + B_CAS_BUFFER_MAX;
+		prv->id.data = (int64_t *)(prv->rbuf + B_CAS_BUFFER_MAX);
+		prv->id_max = 16;
+		prv->pwc.data = (B_CAS_PWR_ON_CTRL *)(prv->id.data + prv->id_max);
+		prv->pwc_max = 16;
+		if(!connect_card(prv, prv->reader)){
+			return B_CAS_CARD_ERROR_ALL_READERS_CONNECTION_FAILED;
+		}
+		return 0;
+	}
 
 	ret = SCardEstablishContext(SCARD_SCOPE_USER, NULL, NULL, &(prv->mng));
 	if(ret != SCARD_S_SUCCESS){
@@ -224,7 +267,6 @@ static int get_id_b_cas_card(void *bcas, B_CAS_ID *dst)
 	uint8_t *tail;
 	
 	B_CAS_CARD_PRIVATE_DATA *prv;
-	SCARD_IO_REQUEST sir;
 
 	prv = private_data(bcas);
 	if( (prv == NULL) || (dst == NULL) ){
@@ -237,10 +279,9 @@ static int get_id_b_cas_card(void *bcas, B_CAS_ID *dst)
 
 	slen = sizeof(CARD_ID_INFORMATION_ACQUIRE_CMD);
 	memcpy(prv->sbuf, CARD_ID_INFORMATION_ACQUIRE_CMD, slen);
-	memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
 	rlen = B_CAS_BUFFER_MAX;
 
-	ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, &rlen);
+	ret = card_transmit(prv, slen, &rlen);
 	if( (ret != SCARD_S_SUCCESS) || (rlen < 19) ){
 		return B_CAS_CARD_ERROR_TRANSMIT_FAILED;
 	}
@@ -285,7 +326,6 @@ static int get_pwr_on_ctrl_b_cas_card(void *bcas, B_CAS_PWR_ON_CTRL_INFO *dst)
 	int i,num,code;
 
 	B_CAS_CARD_PRIVATE_DATA *prv;
-	SCARD_IO_REQUEST sir;
 
 	memset(dst, 0, sizeof(B_CAS_PWR_ON_CTRL_INFO));
 
@@ -301,10 +341,9 @@ static int get_pwr_on_ctrl_b_cas_card(void *bcas, B_CAS_PWR_ON_CTRL_INFO *dst)
 	slen = sizeof(POWER_ON_CONTROL_INFORMATION_REQUEST_CMD);
 	memcpy(prv->sbuf, POWER_ON_CONTROL_INFORMATION_REQUEST_CMD, slen);
 	prv->sbuf[5] = 0;
-	memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
 	rlen = B_CAS_BUFFER_MAX;
 
-	ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, &rlen);
+	ret = card_transmit(prv, slen, &rlen);
 	if( (ret != SCARD_S_SUCCESS) || (rlen < 18) || (prv->rbuf[6] != 0) ){
 		return B_CAS_CARD_ERROR_TRANSMIT_FAILED;
 	}
@@ -330,7 +369,7 @@ static int get_pwr_on_ctrl_b_cas_card(void *bcas, B_CAS_PWR_ON_CTRL_INFO *dst)
 		prv->sbuf[5] = i;
 		rlen = B_CAS_BUFFER_MAX;
 
-		ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, &rlen);
+		ret = card_transmit(prv, slen, &rlen);
 		if( (ret != SCARD_S_SUCCESS) || (rlen < 18) || (prv->rbuf[6] != i) ){
 			return B_CAS_CARD_ERROR_TRANSMIT_FAILED;
 		}
@@ -355,7 +394,6 @@ static int proc_ecm_b_cas_card(void *bcas, B_CAS_ECM_RESULT *dst, uint8_t *src, 
 	
 	B_CAS_CARD_PRIVATE_DATA *prv;
 
-	SCARD_IO_REQUEST sir;
 
 	prv = private_data(bcas);
 	if( (prv == NULL) ||
@@ -370,21 +408,19 @@ static int proc_ecm_b_cas_card(void *bcas, B_CAS_ECM_RESULT *dst, uint8_t *src, 
 	}
 
 	slen = setup_ecm_receive_command(prv->sbuf, src, len);
-	memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
 	rlen = B_CAS_BUFFER_MAX;
 
 	retry_count = 0;
-	ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, &rlen);
+	ret = card_transmit(prv, slen, &rlen);
 	while( ((ret != SCARD_S_SUCCESS) || (rlen < 25)) && (retry_count < 10) ){
 		retry_count += 1;
 		if(!connect_card(prv, prv->reader)){
 			continue;
 		}
 		slen = setup_ecm_receive_command(prv->sbuf, src, len);
-		memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
 		rlen = B_CAS_BUFFER_MAX;
 
-		ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, &rlen);
+		ret = card_transmit(prv, slen, &rlen);
 	}
 
 	if( (ret != SCARD_S_SUCCESS) || (rlen < 25) ){
@@ -407,7 +443,6 @@ static int proc_emm_b_cas_card(void *bcas, uint8_t *src, int len)
 	
 	B_CAS_CARD_PRIVATE_DATA *prv;
 
-	SCARD_IO_REQUEST sir;
 
 	prv = private_data(bcas);
 	if( (prv == NULL) ||
@@ -421,21 +456,19 @@ static int proc_emm_b_cas_card(void *bcas, uint8_t *src, int len)
 	}
 
 	slen = setup_emm_receive_command(prv->sbuf, src, len);
-	memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
 	rlen = B_CAS_BUFFER_MAX;
 
 	retry_count = 0;
-	ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, &rlen);
+	ret = card_transmit(prv, slen, &rlen);
 	while( ((ret != SCARD_S_SUCCESS) || (rlen < 6)) && (retry_count < 2) ){
 		retry_count += 1;
 		if(!connect_card(prv, prv->reader)){
 			continue;
 		}
 		slen = setup_emm_receive_command(prv->sbuf, src, len);
-		memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
 		rlen = B_CAS_BUFFER_MAX;
 
-		ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, &rlen);
+		ret = card_transmit(prv, slen, &rlen);
 	}
 
 	if( (ret != SCARD_S_SUCCESS) || (rlen < 6) ){
@@ -468,6 +501,10 @@ static B_CAS_CARD_PRIVATE_DATA *private_data(void *bcas)
 
 static void teardown(B_CAS_CARD_PRIVATE_DATA *prv)
 {
+	if(prv->transport.transmit != NULL){
+		prv->card = 0; /* PC/SC のハンドルではないので閉じない */
+	}
+
 	if(prv->card != 0){
 		SCardDisconnect(prv->card, SCARD_LEAVE_CARD);
 		prv->card = 0;
@@ -581,23 +618,29 @@ static int connect_card(B_CAS_CARD_PRIVATE_DATA *prv, const char *reader_name)
 
 	uint8_t *p;
 	
-	SCARD_IO_REQUEST sir;
 
-	if(prv->card != 0){
-		SCardDisconnect(prv->card, SCARD_RESET_CARD);
+	if(prv->transport.transmit != NULL){
 		prv->card = 0;
-	}
+		if(prv->transport.reset(prv->transport.ctx) != 0){
+			return 0;
+		}
+		prv->card = 1; /* つながっている印（PC/SC のハンドルではない） */
+	}else{
+		if(prv->card != 0){
+			SCardDisconnect(prv->card, SCARD_RESET_CARD);
+			prv->card = 0;
+		}
 
-	ret = SCardConnect(prv->mng, reader_name, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1, &(prv->card), &protocol);
-	if(ret != SCARD_S_SUCCESS){
-		return 0;
+		ret = SCardConnect(prv->mng, reader_name, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1, &(prv->card), &protocol);
+		if(ret != SCARD_S_SUCCESS){
+			return 0;
+		}
 	}
 
 	m = sizeof(INITIAL_SETTING_CONDITIONS_CMD);
 	memcpy(prv->sbuf, INITIAL_SETTING_CONDITIONS_CMD, m);
-	memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
 	rlen = B_CAS_BUFFER_MAX;
-	ret = SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, m, &sir, prv->rbuf, &rlen);
+	ret = card_transmit(prv, m, &rlen);
 	if(ret != SCARD_S_SUCCESS){
 		return 0;
 	}
@@ -737,3 +780,21 @@ static int64_t load_be_uint48(uint8_t *p)
 	return r;
 }
 
+/* PC/SC か、渡されたやり取りの口のどちらかで、sbuf の slen バイトを送り rbuf に受ける */
+static LONG card_transmit(B_CAS_CARD_PRIVATE_DATA *prv, DWORD slen, DWORD *rlen)
+{
+	SCARD_IO_REQUEST sir;
+
+	if(prv->transport.transmit != NULL){
+		int n = (int)(*rlen);
+		if(prv->transport.transmit(prv->transport.ctx, prv->sbuf, (int)slen, prv->rbuf, &n) != 0){
+			*rlen = 0;
+			return SCARD_F_COMM_ERROR;
+		}
+		*rlen = (DWORD)n;
+		return SCARD_S_SUCCESS;
+	}
+
+	memcpy(&sir, SCARD_PCI_T1, sizeof(sir));
+	return SCardTransmit(prv->card, SCARD_PCI_T1, prv->sbuf, slen, &sir, prv->rbuf, rlen);
+}

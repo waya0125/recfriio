@@ -129,6 +129,12 @@ public:
 	 * バッファをクリアする。
 	 */
 	virtual void clearBuffer() = 0;
+
+	/**
+	 * チューナーに内蔵の B-CAS スロットがあれば、arib25 の B_CAS_CARD_TRANSPORT を返す（無ければ NULL）。
+	 * B25Decoder.hpp と同じく arib25 の型を表に出さないため void で渡す。開いている間だけ有効。
+	 */
+	virtual const void *cardTransport() { return NULL; }
 };
 
 /**

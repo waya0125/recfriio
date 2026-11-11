@@ -60,7 +60,7 @@ void usage(char *argv[])
 {
 	std::cerr << "usage: " << argv[0]
 #ifdef B25
-		<< " [--b25 [--round N] [--strip] [--EMM] [--sync]]"
+		<< " [--b25 [--round N] [--strip] [--EMM] [--sync] [--pcsc]]"
 #endif /* defined(B25) */
 #ifdef HDUS
 		<< " [--hdus]"
@@ -126,6 +126,7 @@ struct Args {
 	bool strip;
 	bool emm;
 	bool sync;
+	bool pcsc;
 #endif /* defined(B25) */
 #ifdef HDUS
 	bool use_hdus;
@@ -272,6 +273,7 @@ parseOption(int argc, char *argv[])
 		false,
 		false,
 		false,
+		false,
 #endif /* defined(B25) */
 #ifdef HDUS
 		false,
@@ -311,6 +313,7 @@ parseOption(int argc, char *argv[])
 			{ "EMM",      0, NULL, 'm' },
 			{ "emm",      0, NULL, 'm' },
 			{ "sync",     0, NULL, 'S' },
+			{ "pcsc",     0, NULL, 'P' },
 #endif /* defined(B25) */
 #ifdef HDUS
 			{ "hdus",     0, NULL, 'h' },
@@ -333,7 +336,7 @@ parseOption(int argc, char *argv[])
 		
 		int r = getopt_long(argc, argv,
 #ifdef B25
-		                    "br:smS"
+		                    "br:smSP"
 #endif /* defined(B25) */
 #ifdef UDP
 		                    "u:p:"
@@ -366,6 +369,9 @@ parseOption(int argc, char *argv[])
 				break;
 			case 'S':
 				args.sync = true;
+				break;
+			case 'P':
+				args.pcsc = true;
 				break;
 #endif /* defined(B25) */
 #ifdef HDUS
@@ -602,30 +608,7 @@ main(int argc, char *argv[])
 #endif /* defined(HTTP) */
 
 #ifdef B25
-	// B25初期化
 	B25Decoder b25dec;
-	if (args.b25) {
-		try {
-			b25dec.setRound(args.round);
-			b25dec.setStrip(args.strip);
-			b25dec.setEmmProcess(args.emm);
-			b25dec.open();
-			log << "B25Decoder initialized." << std::endl;
-		} catch (b25_error& e) {
-			std::cerr << e.what() << std::endl;
-			
-#ifdef HTTP
-			if (!args.http_mode) {
-#endif /* defined(HTTP) */
-			// エラー時b25を行わず処理続行。終了ステータス1
-			std::cerr << "disable b25 decoding." << std::endl;
-			args.b25 = false;
-			result = 1;
-#ifdef HTTP
-			}
-#endif /* defined(HTTP) */
-		}
-	}
 #endif /* defined(B25) */
 
 #ifdef UDP
@@ -712,6 +695,36 @@ main(int argc, char *argv[])
 		break;
 	}
 	
+#ifdef B25
+	// B25初期化（内蔵スロットを使うため、チューナーを開いた後）
+	if (args.b25) {
+		try {
+			b25dec.setRound(args.round);
+			b25dec.setStrip(args.strip);
+			b25dec.setEmmProcess(args.emm);
+			// チューナーに内蔵の B-CAS スロットがあればそれを使う（--pcsc で外付けのリーダー）
+			const void *card = args.pcsc ? NULL : tuner->cardTransport();
+			b25dec.setCardTransport(card);
+			log << (card ? "B-CAS: built-in slot of the tuner" : "B-CAS: PC/SC reader") << std::endl;
+			b25dec.open();
+			log << "B25Decoder initialized." << std::endl;
+		} catch (b25_error& e) {
+			std::cerr << e.what() << std::endl;
+			
+#ifdef HTTP
+			if (!args.http_mode) {
+#endif /* defined(HTTP) */
+			// エラー時b25を行わず処理続行。終了ステータス1
+			std::cerr << "disable b25 decoding." << std::endl;
+			args.b25 = false;
+			result = 1;
+#ifdef HTTP
+			}
+#endif /* defined(HTTP) */
+		}
+	}
+#endif /* defined(B25) */
+
 #ifndef HTTP
 	// 出力先ファイルオープン
 	FILE *dest = stdout;

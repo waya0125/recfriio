@@ -68,7 +68,9 @@ B25Decoder::open()
 	}
 	
 	// bcas作成
-	bcas = create_b_cas_card();
+	bcas = cardTransport
+		? create_b_cas_card_with_transport(static_cast<const B_CAS_CARD_TRANSPORT *>(cardTransport))
+		: create_b_cas_card();
 	if (bcas == NULL) throw b25_error("failed to create b_cas_card.");
 	
 	// bcas->init
