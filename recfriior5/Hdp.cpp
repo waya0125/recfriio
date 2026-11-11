@@ -270,7 +270,8 @@ Hdp::getStream(const uint8_t** bufp, int timeoutMsec)
     while( 1 ){
 
         // 同期
-        if( buffer[ pos ] != 0x47 ){
+        // pos が終わりに来ていたら、読む前に残りとして扱う（buffer[buffersize] を読まない）
+        if( pos < buffersize && buffer[ pos ] != 0x47 ){
             size_t pos_sync = pos;
             while( pos < buffersize ){
                 if( buffer[ pos ] == 0x47 ){
