@@ -62,25 +62,25 @@ Hdp::~Hdp()
  * 復調部とチューナーは、ソニーのチューナーモジュール BTD-VK482Z の中にまとめて入っていると見られる
  * （HDUS の基板写真からの推定。docs/QRS-UT100B.md の「概要」）。
  *
- * ASV5211 のベンダーリクエストの名前は coax（internal/coaxd/usb/bridge/asv5211）に合わせた。
- * 0x02・0x03・0x0a・0x17 は coax に無く、recfriio の元のコメントと動きからの名前。
+ * ASV5211 のベンダーリクエストの名前は coax（internal/coaxd/usb/bridge/asv5211）と、PLEX の Linux ドライバーの
+ * ライブラリ（PX-SERIES_ver.1.0_Linux_Driver の libPlexLib_*.a、関数名が残っている）に合わせた。
  */
 
 // ---- ASV5211 のベンダーリクエスト ----
-static const uint8_t ASV_REG_READ      = 0x02; // I2C の機器のレジスタを 1 つ読む: wValue = reg << 8 | addr、答えの [1] が値
-static const uint8_t ASV_REG_WRITE     = 0x03; // 1 つ書く: wValue = reg << 8 | addr、wIndex = 値
+static const uint8_t ASV_REG_READ      = 0x02; // PLEX: ReadI2CData。I2C の機器のレジスタを 1 つ読む: wValue = reg << 8 | addr、答えの [1] が値
+static const uint8_t ASV_REG_WRITE     = 0x03; // PLEX: WriteI2CData。1 つ書く: wValue = reg << 8 | addr、wIndex = 値
 static const uint8_t ASV_FILTER_READ   = 0x04; // TS フィルター（チャンネル 0）のレジスタを読む
 static const uint8_t ASV_FILTER_WRITE  = 0x05; // 書く: wValue = 値の上位 << 8 | reg、wIndex = 値の下位
 static const uint8_t ASV_STREAM_START  = 0x06; // wValue = チャンネル
 static const uint8_t ASV_STREAM_STOP   = 0x07;
 static const uint8_t ASV_GPIO          = 0x08; // wValue = mask << 8 | value
 static const uint8_t ASV_FILTER_RESET  = 0x09; // wValue = mode << 8 | チャンネル
-static const uint8_t ASV_HIGH_SPEED    = 0x0a; // 元のコメントで「ASV5211 is high speed」
+static const uint8_t ASV_HIGH_SPEED    = 0x0a; // PLEX: GetDevHighSpeed。USB が高速かを問い合わせるだけ（設定ではない）
 static const uint8_t ASV_CUSTOMER_INFO = 0x0c; // 状態 1 バイト + 0x39 バイト
 static const uint8_t ASV_I2C_FILL      = 0x0d; // I2C で送るバイトを 3 つずつ溜める: wValue = byte0 << 8 | offset、wIndex = byte2 << 8 | byte1
 static const uint8_t ASV_I2C_SEND      = 0x0e; // 溜めたものを送る: wValue = addr
 static const uint8_t ASV_GPIO_EX       = 0x10; // 2 つ目の GPIO: wValue = mask << 8 | value
-static const uint8_t ASV_REQ_17        = 0x17; // 意味は不明（開く前に 2 回呼ぶ）
+static const uint8_t ASV_SYSCTRL_READ  = 0x17; // PLEX: ReadSysCtrlData。wValue のアドレスから読む（書くのは 0x18）
 
 // ---- I2C のアドレス ----
 static const uint8_t I2C_DEMOD = 0x20; // TC90522 地上波側
@@ -89,13 +89,15 @@ static const uint8_t I2C_CARD_HDUS = 0x5a, I2C_CARD_HDP = 0x4a; // ASIE5606（�
 
 // ---- TC90522 地上波側のレジスタ（coax の demod/tc90522 と Linux の tc90522 に合わせた）----
 static const uint8_t TC_T_AGC_1     = 0x01; // AGC の設定（coax の SetAGCT と同じ組）
-static const uint8_t TC_T_1C        = 0x1c; // 意味は未確認（0x9d を読んだ値から作って書く）
-static const uint8_t TC_T_1E        = 0x1e; // 意味は未確認（選局の前後で書く）
-static const uint8_t TC_T_1F        = 0x1f; // 意味は未確認（同上）
+static const uint8_t TC_T_1C        = 0x1c; // 制御。PLEX は選局で 0x1c を読んで bit 4・5 を立て、少し待って bit 4 を落とす
+static const uint8_t TC_T_1E        = 0x1e; // 出力の線の設定と見られる。PLEX は周波数（約 261 MHz の上下）で bit 4・5 を変える
+static const uint8_t TC_T_1F        = 0x1f; // 0x1e と組で選局の前後に書く（意味は未確認）
 static const uint8_t TC_T_AGC_23    = 0x23; // AGC。bit 0 が自動（0x4d）か止める（0x4c）か
 static const uint8_t TC_T_AGC_25    = 0x25; // AGC の設定（coax の SetAGCT と同じ組）
 static const uint8_t TC_T_CNDAT     = 0x8b; // C/N の生の値（0x8b..0x8d の 24 ビット）
-static const uint8_t TC_T_9D        = 0x9d; // 意味は未確認（0x1c を書く前に読む）
+static const uint8_t TC_T_9D        = 0x9d; // 状態。PLEX は BER・SNR を測るときに最初に読む。
+                                            // ここで 0x9d を読んで 0x1c を作るのは、元のコードが 0x1c を読むつもりだった
+                                            // 可能性が高い（PLEX は 0x1c を読んで書き戻す）。動いているので値はそのまま
 static const uint8_t TC_REPEATER    = 0xfe; // ここに書くと、続くバイトがチューナーへ中継される
 
 // ---- ASIE5606 のレジスタ ----
@@ -113,7 +115,7 @@ static const uint8_t FILTER_XPID_MAX = 0x43;
 
 // ---- GPIO（ASV_GPIO の mask・value。どの線が何かは元のコメントからの推測）----
 static const uint8_t GPIO_TUNER_POWER = 0x08; // 1 で切る、0 で入れる
-static const uint8_t GPIO_CARD_RESET  = 0x11; // ASIE5606 の電源・リセット（1→0→1 で入れ直す）
+static const uint8_t GPIO_CARD_RESET  = 0x11; // ASIE5606 のリセット（1→0→1）。PLEX の基板・coax と同じ線
 static const uint8_t GPIO_D4          = 0xd4; // 意味は未確認（切るときに 0）
 static const uint8_t GPIO_D5          = 0xd5; // 意味は未確認（入れるときに 0→1）
 
@@ -495,7 +497,7 @@ Hdp::UsbProcBegin(int fd)
     saddr = I2C_CARD_HDUS;
 
     send_ctl(data, fd, ASV_CUSTOMER_INFO, 0x0000, 0x0000, 0x003a);
-    send_ctl(data, fd, ASV_REQ_17, 0x0002, 0x0000, 0x0003);
+    send_ctl(data, fd, ASV_SYSCTRL_READ, 0x0002, 0x0000, 0x0003);
     gpio(0xfb, 0x07);
     send_ctl(data, fd, ASV_GPIO_EX, 0x0200, 0x0000, 0x0001); // mask 0x02、value 0
 
@@ -503,7 +505,7 @@ Hdp::UsbProcBegin(int fd)
     gpio(GPIO_D4, 0x00);
     gpio(GPIO_TUNER_POWER, GPIO_TUNER_POWER);
     usleep (50 * 1000);
-    send_ctl(data, fd, ASV_REQ_17, 0x0002, 0x0000, 0x0003);
+    send_ctl(data, fd, ASV_SYSCTRL_READ, 0x0002, 0x0000, 0x0003);
 
     /* チューナーの電源を入れる */
     gpio(GPIO_TUNER_POWER, GPIO_TUNER_POWER);
