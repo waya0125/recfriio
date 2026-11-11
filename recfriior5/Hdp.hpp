@@ -79,7 +79,11 @@ private:
 
     uint8_t r5;
 
-    void sendTuner(uint8_t *data, int len);
+    uint8_t regRead(uint8_t addr, uint8_t reg, uint8_t *status = NULL);
+    void regWrite(uint8_t addr, uint8_t reg, uint8_t value);
+    void gpio(uint8_t mask, uint8_t value);
+    void tunerSend(const uint8_t *bytes, int count);
+    void tunerWrite(uint8_t reg, uint8_t value);
     void send_ctl(uint8_t *data, int fd, uint8_t req, uint16_t val, uint16_t idx, uint16_t len);
 
     bool vendorRequest ( uint16_t wLength, uint8_t* data, uint8_t bRequest, uint8_t v0 = 0, uint8_t v1 = 0, uint8_t v2 = 0, uint8_t v3 = 0 );

@@ -26,6 +26,7 @@
 #include <glib.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "usbops.hpp"
 #include "Hdp.hpp"
 
@@ -51,7 +52,73 @@ Hdp::~Hdp()
 }
 
 
-static uint8_t tunerAddr [0x5e] = {
+/*
+ * QRS-UT100B の中身と、ここで使うレジスタの名前。
+ *
+ *   ASV5211（USB ブリッジ） ── I2C ─┬─ 0x20: 復調部（TC90522 の地上波側。C/N の式が合うことで確かめた）
+ *                                   │         └ 中継レジスタ 0xfe ─ 0xc0: チューナー（型番は未確認。NM120 ではない）
+ *                                   └─ 0x4a / 0x5a: ASIE5606（B-CAS カードの IC。TS のスクランブルも受け持つ）
+ *
+ * ASV5211 のベンダーリクエストの名前は coax（internal/coaxd/usb/bridge/asv5211）に合わせた。
+ * 0x02・0x03・0x0a・0x17 は coax に無く、recfriio の元のコメントと動きからの名前。
+ */
+
+// ---- ASV5211 のベンダーリクエスト ----
+static const uint8_t ASV_REG_READ      = 0x02; // I2C の機器のレジスタを 1 つ読む: wValue = reg << 8 | addr、答えの [1] が値
+static const uint8_t ASV_REG_WRITE     = 0x03; // 1 つ書く: wValue = reg << 8 | addr、wIndex = 値
+static const uint8_t ASV_FILTER_READ   = 0x04; // TS フィルター（チャンネル 0）のレジスタを読む
+static const uint8_t ASV_FILTER_WRITE  = 0x05; // 書く: wValue = 値の上位 << 8 | reg、wIndex = 値の下位
+static const uint8_t ASV_STREAM_START  = 0x06; // wValue = チャンネル
+static const uint8_t ASV_STREAM_STOP   = 0x07;
+static const uint8_t ASV_GPIO          = 0x08; // wValue = mask << 8 | value
+static const uint8_t ASV_FILTER_RESET  = 0x09; // wValue = mode << 8 | チャンネル
+static const uint8_t ASV_HIGH_SPEED    = 0x0a; // 元のコメントで「ASV5211 is high speed」
+static const uint8_t ASV_CUSTOMER_INFO = 0x0c; // 状態 1 バイト + 0x39 バイト
+static const uint8_t ASV_I2C_FILL      = 0x0d; // I2C で送るバイトを 3 つずつ溜める: wValue = byte0 << 8 | offset、wIndex = byte2 << 8 | byte1
+static const uint8_t ASV_I2C_SEND      = 0x0e; // 溜めたものを送る: wValue = addr
+static const uint8_t ASV_GPIO_EX       = 0x10; // 2 つ目の GPIO: wValue = mask << 8 | value
+static const uint8_t ASV_REQ_17        = 0x17; // 意味は不明（開く前に 2 回呼ぶ）
+
+// ---- I2C のアドレス ----
+static const uint8_t I2C_DEMOD = 0x20; // TC90522 地上波側
+static const uint8_t I2C_TUNER = 0xc0; // 復調部の中継の先
+static const uint8_t I2C_CARD_HDUS = 0x5a, I2C_CARD_HDP = 0x4a; // ASIE5606（どちらで答えるかを確かめて使う）
+
+// ---- TC90522 地上波側のレジスタ（coax の demod/tc90522 と Linux の tc90522 に合わせた）----
+static const uint8_t TC_T_AGC_1     = 0x01; // AGC の設定（coax の SetAGCT と同じ組）
+static const uint8_t TC_T_1C        = 0x1c; // 意味は未確認（0x9d を読んだ値から作って書く）
+static const uint8_t TC_T_1E        = 0x1e; // 意味は未確認（選局の前後で書く）
+static const uint8_t TC_T_1F        = 0x1f; // 意味は未確認（同上）
+static const uint8_t TC_T_AGC_23    = 0x23; // AGC。bit 0 が自動（0x4d）か止める（0x4c）か
+static const uint8_t TC_T_AGC_25    = 0x25; // AGC の設定（coax の SetAGCT と同じ組）
+static const uint8_t TC_T_CNDAT     = 0x8b; // C/N の生の値（0x8b..0x8d の 24 ビット）
+static const uint8_t TC_T_9D        = 0x9d; // 意味は未確認（0x1c を書く前に読む）
+static const uint8_t TC_REPEATER    = 0xfe; // ここに書くと、続くバイトがチューナーへ中継される
+
+// ---- ASIE5606 のレジスタ ----
+static const uint8_t CARD_CTRL       = 0x00;
+static const uint8_t CARD_04         = 0x04; // 意味は未確認（閉じるときに 0）
+static const uint8_t CARD_TS_MODE    = 0x05; // TS のスクランブルの方式: 0x91 = XOR、0x80 = DES
+static const uint8_t CARD_IDENTITY   = 0x09; // 下位 3 ビットが 6 なら DES の版（coax も 0x09 で IC を見分ける）
+static const uint8_t CARD_TS_KEY     = 0x10; // 0x10..0x1f。coax によると普通の書き込みでは効かない
+static const uint8_t CARD_80         = 0x80; // 意味は未確認（閉じるときに 0）
+
+// ---- TS フィルター（チャンネル 0）のレジスタ ----
+static const uint8_t FILTER_CONTROL  = 0x40; // bit 0・1 入力、bit 2 モード、bit 3 動かす
+static const uint8_t FILTER_XPID_MIN = 0x41; // 捨てる PID の範囲（16 ビット）。0x1fff..0x1fff でヌルパケットだけ捨てる
+static const uint8_t FILTER_XPID_MAX = 0x43;
+
+// ---- GPIO（ASV_GPIO の mask・value。どの線が何かは元のコメントからの推測）----
+static const uint8_t GPIO_TUNER_POWER = 0x08; // 1 で切る、0 で入れる
+static const uint8_t GPIO_CARD_RESET  = 0x11; // ASIE5606 の電源・リセット（1→0→1 で入れ直す）
+static const uint8_t GPIO_D4          = 0xd4; // 意味は未確認（切るときに 0）
+static const uint8_t GPIO_D5          = 0xd5; // 意味は未確認（入れるときに 0→1）
+
+/*
+ * 復調部の初期値（元の名前は tunerAddr / tunerData だったが、書く先は復調部 0x20）。
+ */
+static const uint8_t demodInitRegs [0x5e] = {
+
   0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
   0x0C, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
   0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
@@ -66,7 +133,7 @@ static uint8_t tunerAddr [0x5e] = {
   0xC7, 0xE4, 0xE6, 0xE9, 0xEC, 0xEF
 };
 
-static uint8_t tunerData [0x5e] = {
+static const uint8_t demodInitValues [0x5e] = {
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x21, 0x10, 0x03, 0xE0, 0x42, 0x09, 0x20,
   0x29, 0x13, 0x29, 0x13, 0x2A, 0xAA, 0xAA, 0xA8,
@@ -82,32 +149,85 @@ static uint8_t tunerData [0x5e] = {
 };
 
 /*
- * send Tuner
+ * チューナー（0xc0）の初期化。型番が分からないので、レジスタは番号のまま。
  */
-void 
-Hdp::sendTuner(uint8_t *newdata, int len)
+static const uint8_t tunerInit[][2] = {
+    {0x2c, 0x44}, {0x4d, 0x40}, {0x7f, 0x02}, {0x9a, 0x52}, {0x48, 0x5a}, {0x76, 0x1a},
+    {0x6a, 0x48}, {0x64, 0x28}, {0x66, 0xe6}, {0x35, 0x11}, {0x7e, 0x01}, {0x0b, 0x99},
+    {0x0c, 0x00}, {0x10, 0x40}, {0x12, 0xca}, {0x16, 0x90}, {0x32, 0x36}, {0xd8, 0x18},
+    {0x05, 0x01},
+};
+
+// チューナーのレジスタ（選局で使うもの）
+static const uint8_t TUNER_CONTROL = 0x11; // 0 にしてから周波数を書き、2 で選局を始める（と見られる）
+static const uint8_t TUNER_13      = 0x13; // 意味は未確認（選局のたびに 0x15）
+static const uint8_t TUNER_FREQ_LO = 0x14; // 周波数（1/64 MHz 単位）の下位
+static const uint8_t TUNER_FREQ_HI = 0x15; // 上位
+
+/*
+ * I2C の機器のレジスタを 1 つ読む。status に答えの先頭（1 なら成功）を返す。
+ */
+uint8_t
+Hdp::regRead(uint8_t addr, uint8_t reg, uint8_t *status)
 {
-    newdata[0] = 0xfe; newdata[1] = 0xc0;
+    uint8_t data[0x200];
+    send_ctl(data, tunerFd, ASV_REG_READ, (reg << 8) | addr, 0x0000, 0x0002);
+    if (status) *status = data[0];
+    return data[1];
+}
+
+void
+Hdp::regWrite(uint8_t addr, uint8_t reg, uint8_t value)
+{
+    uint8_t data[0x200];
+    send_ctl(data, tunerFd, ASV_REG_WRITE, (reg << 8) | addr, value, 0x0002);
+}
+
+void
+Hdp::gpio(uint8_t mask, uint8_t value)
+{
+    uint8_t data[0x200];
+    send_ctl(data, tunerFd, ASV_GPIO, (mask << 8) | value, 0x0000, 0x0001);
+}
+
+/*
+ * 復調部の中継（0xfe）を通して、チューナー（0xc0）へバイト列を送る。
+ * I2C で送るのは [0xfe, 0xc0, bytes...]。ASV5211 には 3 バイトずつ溜めてから送る。
+ */
+void
+Hdp::tunerSend(const uint8_t *bytes, int count)
+{
+    uint8_t frame[2 + 8];
+    frame[0] = TC_REPEATER; frame[1] = I2C_TUNER;
+    memcpy(frame + 2, bytes, count);
+    int len = 2 + count;
+    const uint8_t *p = frame;
     uint8_t offset = 0;
-    int ugen = tunerFd;
     uint8_t data[0x200];
 
     for (; len >= 3; len -= 3) {
-        send_ctl(data, ugen, 0x0d, (newdata[0] << 8) | offset, (newdata[2] << 8) | newdata[1], 0x0004);
-        newdata += 3;
+        send_ctl(data, tunerFd, ASV_I2C_FILL, (p[0] << 8) | offset, (p[2] << 8) | p[1], 0x0004);
+        p += 3;
         offset += 3;
     }
     switch ( len ) {
         case 2:
-            send_ctl(data, ugen, 0x0d, (newdata[0] << 8) | offset, newdata[1], 0x0003);
+            send_ctl(data, tunerFd, ASV_I2C_FILL, (p[0] << 8) | offset, p[1], 0x0003);
             offset += 2;
             break;
         case 1:
-            send_ctl(data, ugen, 0x0d, (newdata[0] << 8) | offset, 0x0000, 0x0002);
+            send_ctl(data, tunerFd, ASV_I2C_FILL, (p[0] << 8) | offset, 0x0000, 0x0002);
             offset += 1;
             break;
     }
-    send_ctl(data, ugen, 0x0e, 0x0020, 0x0000, offset + 1);
+    send_ctl(data, tunerFd, ASV_I2C_SEND, I2C_DEMOD, 0x0000, offset + 1);
+}
+
+void
+Hdp::tunerWrite(uint8_t reg, uint8_t value)
+{
+    const uint8_t bytes[2] = { reg, value };
+    tunerSend(bytes, 2);
 }
 
 /**
@@ -120,92 +240,76 @@ Hdp::setChannel(BandType newBand, int newChannel)
 {
     if( ! saddr ) return;
 
-    int ugen = tunerFd;
     uint8_t data[0x200];
-    int chan = newChannel, freq;
-    int xpid_min = 0x1fff, xpid_max = 0x1fff;
+    int freq; // MHz
+    const uint16_t xpid_min = 0x1fff, xpid_max = 0x1fff; // ヌルパケットだけ捨てる
 
     if (BAND_UHF != newBand || newChannel < 13 || newChannel > 62) {
         if(BAND_CATV != newBand || newChannel < 13 || newChannel > 63) {
             throw traceable_error("unknown channel."); // TODO: 適当なエラークラス
         } else {
             // CATV band
-	    if (newChannel <= 22) {
+            if (newChannel <= 22) {
                 freq = 111 + (newChannel - 13) * 6;
-	    } else if (newChannel == 23) {
-		freq = 225;
-	    } else if (newChannel <= 27) {
-		freq = 233 + (newChannel - 24) * 6;
+            } else if (newChannel == 23) {
+                freq = 225;
+            } else if (newChannel <= 27) {
+                freq = 233 + (newChannel - 24) * 6;
             } else {
-		freq = 225 + (newChannel - 23) * 6;
-	    }
+                freq = 225 + (newChannel - 23) * 6;
+            }
         }
     } else {
         // UHF band
-        freq = 473 + (chan - 13) * 6;
+        freq = 473 + (newChannel - 13) * 6;
     }
     if (log) *log << "freq = " << freq << std::endl;
 
+    const uint16_t freqCode = freq * 64; // 1/64 MHz 単位
 
-    /* Set frequency */
-    freq = ((freq * 1000) << 6) / 1000;
-    send_ctl(data, ugen, 0x02, 0x9d20, 0x0000, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x1c20, (data[1] & 0xfb) | 0x38, 0x0002);
+    /* 選局の前の復調部の設定 */
+    regWrite(I2C_DEMOD, TC_T_1C, (regRead(I2C_DEMOD, TC_T_9D) & 0xfb) | 0x38);
+    regWrite(I2C_DEMOD, TC_T_AGC_25, 0x00);
+    regWrite(I2C_DEMOD, TC_T_AGC_23, 0x4d);
+    regWrite(I2C_DEMOD, TC_T_1E, 0xaa);
+    regWrite(I2C_DEMOD, TC_T_1F, 0xa8);
 
-    send_ctl(data, ugen, 0x03, 0x2520, 0x0000, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x2320, 0x004d, 0x0002);
+    /* チューナーに周波数を書く */
+    tunerWrite(TUNER_CONTROL, 0x00);
+    tunerWrite(TUNER_13, 0x15);
+    tunerWrite(TUNER_FREQ_LO, (uint8_t) freqCode);
+    tunerWrite(TUNER_FREQ_HI, (uint8_t) (freqCode >> 8));
+    tunerWrite(TUNER_CONTROL, 0x02);
 
-    send_ctl(data, ugen, 0x03, 0x1e20, 0x00aa, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x1f20, 0x00a8, 0x0002);
-    {
-        uint8_t newdata[4];
-        newdata[2] = 0x11; newdata[3] = 0x00; sendTuner (newdata, 4);
-        newdata[2] = 0x13; newdata[3] = 0x15; sendTuner (newdata, 4);
+    /* 選局の後の復調部の設定 */
+    regWrite(I2C_DEMOD, TC_T_1E, 0xa2);
+    regWrite(I2C_DEMOD, TC_T_1F, 0x08);
+    regWrite(I2C_DEMOD, TC_T_AGC_1, 0x40);
+    regWrite(I2C_DEMOD, TC_T_AGC_23, 0x4c);
 
-        newdata[2] = 0x14; newdata[3] = (uint8_t) freq; sendTuner (newdata, 4);
-        newdata[2] = 0x15; newdata[3] = (uint8_t) (freq >> 8); sendTuner (newdata, 4);
+    /* TS フィルター（チャンネル 0）: リセットし、入力・動作を有効にして、捨てる PID を決める */
+    send_ctl(data, tunerFd, ASV_FILTER_RESET, 0x0100, 0x0000, 0x0001); // mode 1、チャンネル 0
+    send_ctl(data, tunerFd, ASV_FILTER_READ, FILTER_CONTROL, 0x0000, 0x0002);
+    send_ctl(data, tunerFd, ASV_FILTER_WRITE, ((data[1] | 0x0f) << 8) | FILTER_CONTROL, 0x0000, 0x0002);
+    send_ctl(data, tunerFd, ASV_FILTER_WRITE, (xpid_min & 0xff00) | FILTER_XPID_MIN, (xpid_min & 0xff), 0x0003);
+    send_ctl(data, tunerFd, ASV_FILTER_WRITE, (xpid_max & 0xff00) | FILTER_XPID_MAX, (xpid_max & 0xff), 0x0003);
 
-        newdata[2] = 0x11; newdata[3] = 0x02; sendTuner (newdata, 4);
-    }
-    send_ctl(data, ugen, 0x03, 0x1e20, 0x00a2, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x1f20, 0x0008, 0x0002);
-
-    send_ctl(data, ugen, 0x03, 0x0120, 0x0040, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x2320, 0x004c, 0x0002);
-
-    send_ctl(data, ugen, 0x09, 0x0100, 0x0000, 0x0001);
-
-    /* Set PID filter */
-    send_ctl(data, ugen, 0x04, 0x0040, 0x0000, 0x0002);
-    send_ctl(data, ugen, 0x05, ((data[1] | 0x0f) << 8) | 0x40, 0x0000, 0x0002);
-    send_ctl(data, ugen, 0x05, (xpid_min & 0xff00) | 0x41,
-             (xpid_min & 0xff), 0x0003);
-    send_ctl(data, ugen, 0x05, (xpid_max & 0xff00) | 0x43,
-             (xpid_max & 0xff), 0x0003);
-
-    /* kick ASV5211 bulk transfer */
-    send_ctl(data, ugen, 0x06, 0x0000, 0x0000, 0x0001);
+    /* 受信を始める（チャンネル 0）*/
+    send_ctl(data, tunerFd, ASV_STREAM_START, 0x0000, 0x0000, 0x0001);
     usleep (150 * 1000);
 }
 
 /**
  * 信号レベルを取得する。
- * @return float 信号レベル
+ * @return float C/N 比（dB）。つかめていなければ 0
  */
 const float
 Hdp::getSignalLevel(void)
 {
-    // 復調部（TC90522 の地上波側、I2C 0x20）の C/N のレジスタ 0x8b..0x8d（24 ビット）を読み、
-    // Linux の tc90522 ドライバーと同じ式で C/N 比（dB）にする。
-    int ugen = tunerFd;
-    uint8_t data[0x200];
-
-    send_ctl(data, ugen, 0x02, 0x8b20, 0x0000, 0x0002);
-    uint32_t val = (uint32_t)data[1] << 16;
-    send_ctl(data, ugen, 0x02, 0x8c20, 0x0000, 0x0002);
-    val |= (uint32_t)data[1] << 8;
-    send_ctl(data, ugen, 0x02, 0x8d20, 0x0000, 0x0002);
-    val |= data[1];
+    // 復調部の C/N のレジスタ（24 ビット）を読み、Linux の tc90522 ドライバーと同じ式で dB にする。
+    uint32_t val = (uint32_t)regRead(I2C_DEMOD, TC_T_CNDAT) << 16;
+    val |= (uint32_t)regRead(I2C_DEMOD, TC_T_CNDAT + 1) << 8;
+    val |= regRead(I2C_DEMOD, TC_T_CNDAT + 2);
 
     if (val == 0) {
         if (log) *log << "CNR: register 0 (no lock?)" << std::endl;
@@ -381,105 +485,78 @@ Hdp::UsbProcBegin(int fd)
     stale_remaining = HDP_STALE_DISCARD_BYTES;
 
     /* HDP を開く */
-
     if (log) *log << "opening HDP...";
-
-    int ugen = fd;
     uint8_t data[0x200];
-    uint32_t val;
+
     r5 = 0x91;
-    saddr = 0x5a;
+    saddr = I2C_CARD_HDUS;
 
-    send_ctl(data, ugen, 0x0c, 0x0000, 0x0000, 0x003a);
-    send_ctl(data, ugen, 0x17, 0x0002, 0x0000, 0x0003);
-    send_ctl(data, ugen, 0x08, 0xfb07, 0x0000, 0x0001);
-    send_ctl(data, ugen, 0x10, 0x0200, 0x0000, 0x0001);
+    send_ctl(data, fd, ASV_CUSTOMER_INFO, 0x0000, 0x0000, 0x003a);
+    send_ctl(data, fd, ASV_REQ_17, 0x0002, 0x0000, 0x0003);
+    gpio(0xfb, 0x07);
+    send_ctl(data, fd, ASV_GPIO_EX, 0x0200, 0x0000, 0x0001); // mask 0x02、value 0
 
-    /* Power off */
-    send_ctl(data, ugen, 0x08, 0xd400, 0x0000, 0x0001);
-    send_ctl(data, ugen, 0x08, 0x0808, 0x0000, 0x0001);
+    /* 電源を切る */
+    gpio(GPIO_D4, 0x00);
+    gpio(GPIO_TUNER_POWER, GPIO_TUNER_POWER);
     usleep (50 * 1000);
+    send_ctl(data, fd, ASV_REQ_17, 0x0002, 0x0000, 0x0003);
 
-    send_ctl(data, ugen, 0x17, 0x0002, 0x0000, 0x0003);
-
-    /* Tuner on */
-    send_ctl(data, ugen, 0x08, 0x0808, 0x0000, 0x0001);
+    /* チューナーの電源を入れる */
+    gpio(GPIO_TUNER_POWER, GPIO_TUNER_POWER);
     usleep (50 * 1000);
-    send_ctl(data, ugen, 0x08, 0x0800, 0x0000, 0x0001);
+    gpio(GPIO_TUNER_POWER, 0x00);
     usleep (150 * 1000);
-    send_ctl(data, ugen, 0x08, 0x11ff, 0x0000, 0x0001);
+    gpio(GPIO_CARD_RESET, 0xff);
     usleep (50 * 1000);
-    send_ctl(data, ugen, 0x08, 0xd500, 0x0000, 0x0001);
+    gpio(GPIO_D5, 0x00);
     usleep (50 * 1000);
-    send_ctl(data, ugen, 0x08, 0xd5ff, 0x0000, 0x0001);
+    gpio(GPIO_D5, 0xff);
     usleep (100 * 1000);
 
-    /* Tuner init */
-    uint8_t newdata[4];
-    unsigned int i;
-    newdata[2] = 0xff; sendTuner(newdata, 3);
-
-    for (i = 0; i < sizeof(tunerAddr); i++) {
-        send_ctl(data, ugen, 0x03, (tunerAddr[i] << 8) | 0x20, tunerData[i], 0x0002);
+    /* チューナーと復調部の初期化 */
+    const uint8_t tunerReset = 0xff; // チューナーに 1 バイトだけ 0xff を送る（リセットと見られる）
+    tunerSend(&tunerReset, 1);
+    for (size_t i = 0; i < sizeof(demodInitRegs); i++) {
+        regWrite(I2C_DEMOD, demodInitRegs[i], demodInitValues[i]);
+    }
+    regWrite(I2C_DEMOD, TC_T_1C, (regRead(I2C_DEMOD, TC_T_9D) & 0xeb) | 0x28);
+    for (size_t i = 0; i < sizeof(tunerInit) / sizeof(tunerInit[0]); i++) {
+        tunerWrite(tunerInit[i][0], tunerInit[i][1]);
     }
 
-    send_ctl(data, ugen, 0x02, 0x9d20, 0x0000, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x1c20, (data[1] & 0xeb) | 0x28, 0x0002);
-
-    newdata[2] = 0x2c; newdata[3] = 0x44; sendTuner(newdata, 4);
-    newdata[2] = 0x4d; newdata[3] = 0x40; sendTuner(newdata, 4);
-    newdata[2] = 0x7f; newdata[3] = 0x02; sendTuner(newdata, 4);
-    newdata[2] = 0x9a; newdata[3] = 0x52; sendTuner(newdata, 4);
-    newdata[2] = 0x48; newdata[3] = 0x5a; sendTuner(newdata, 4);
-    newdata[2] = 0x76; newdata[3] = 0x1a; sendTuner(newdata, 4);
-    newdata[2] = 0x6a; newdata[3] = 0x48; sendTuner(newdata, 4);
-    newdata[2] = 0x64; newdata[3] = 0x28; sendTuner(newdata, 4);
-    newdata[2] = 0x66; newdata[3] = 0xe6; sendTuner(newdata, 4);
-    newdata[2] = 0x35; newdata[3] = 0x11; sendTuner(newdata, 4);
-    newdata[2] = 0x7e; newdata[3] = 0x01; sendTuner(newdata, 4);
-    newdata[2] = 0x0b; newdata[3] = 0x99; sendTuner(newdata, 4);
-    newdata[2] = 0x0c; newdata[3] = 0x00; sendTuner(newdata, 4);
-    newdata[2] = 0x10; newdata[3] = 0x40; sendTuner(newdata, 4);
-
-    newdata[2] = 0x12; newdata[3] = 0xca; sendTuner(newdata, 4);
-    newdata[2] = 0x16; newdata[3] = 0x90; sendTuner(newdata, 4);
-    newdata[2] = 0x32; newdata[3] = 0x36; sendTuner(newdata, 4);
-    newdata[2] = 0xD8; newdata[3] = 0x18; sendTuner(newdata, 4);
-    newdata[2] = 0x05; newdata[3] = 0x01; sendTuner(newdata, 4);
-
-    /* ASIE5606 on */
-    send_ctl(data, ugen, 0x08, 0x11ff, 0x0000, 0x0001);
+    /* ASIE5606 の電源・リセット */
+    gpio(GPIO_CARD_RESET, 0xff);
     usleep (50 * 1000);
-    send_ctl(data, ugen, 0x08, 0x1100, 0x0000, 0x0001);
+    gpio(GPIO_CARD_RESET, 0x00);
     usleep (50 * 1000);
-    send_ctl(data, ugen, 0x08, 0x11ff, 0x0000, 0x0001);
+    gpio(GPIO_CARD_RESET, 0xff);
     usleep (100 * 1000);
 
-    send_ctl(data, ugen, 0x02, 0x0900 | saddr, 0x0000, 0x0002);
-    if (data[0] != 1) {
-        saddr = 0x4a; /* HDP */
-        send_ctl(data, ugen, 0x02, 0x0900 | saddr, 0x0000, 0x0002);
+    /* ASIE5606 がどちらのアドレスで答えるか、どの版かを見る */
+    uint8_t status;
+    uint8_t identity = regRead(saddr, CARD_IDENTITY, &status);
+    if (status != 1) {
+        saddr = I2C_CARD_HDP;
+        identity = regRead(saddr, CARD_IDENTITY, &status);
     }
-    if ( (data[1] & 7) == 6) {
+    if ( (identity & 7) == 6) {
         r5 = 0x80; /* DES */
     }
 
-    /* ASV5211 is high speed */
-    send_ctl(data, ugen, 0x0a, 0x0000, 0x0000, 0x0001);
+    send_ctl(data, fd, ASV_HIGH_SPEED, 0x0000, 0x0000, 0x0001);
     usleep (30 * 1000);
-    /* ASIE decrypt mode configuration */
-    send_ctl(data, ugen, 0x03, 0x0500 | saddr, r5, 0x0002);
 
-    /* Set key */
-    for (val = 0x1000; val < 0x2000; val += 0x0100)
-        send_ctl(data, ugen, 0x03, val | saddr, 0x0000, 0x0002);
+    /* TS のスクランブルの方式と鍵（鍵は 0。coax によると、この書き方では効いていない）*/
+    regWrite(saddr, CARD_TS_MODE, r5);
+    for (uint8_t reg = CARD_TS_KEY; reg < CARD_TS_KEY + 0x10; reg++)
+        regWrite(saddr, reg, 0x00);
 
     if (log) *log << "done." << std::endl;
 }
 
 /**
  * 処理終了
- * 便宜上Endにしている。恐らくバッファクリア
  * @param fd 対象ファイルディスクリプタ
  */
 void
@@ -490,21 +567,19 @@ Hdp::UsbProcEnd(int fd)
     if (log) *log << "closing HDP...";
 
     uint8_t data[0x200];
-    int ugen = fd;
 
-    /* Stop */
+    /* 受信を止める */
     usleep(100 * 1000);
-    send_ctl(data, ugen, 0x07, 0x0000, 0x0000, 0x0001);
+    send_ctl(data, fd, ASV_STREAM_STOP, 0x0000, 0x0000, 0x0001);
+    send_ctl(data, fd, ASV_FILTER_RESET, 0x0100, 0x0000, 0x0001);
+    regWrite(saddr, CARD_80, 0x00);
+    regWrite(saddr, CARD_04, 0x00);
+    regWrite(saddr, CARD_CTRL, 0x00);
 
-    send_ctl(data, ugen, 0x09, 0x0100, 0x0000, 0x0001);
-    send_ctl(data, ugen, 0x03, 0x8000 | saddr, 0x0000, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x0400 | saddr, 0x0000, 0x0002);
-    send_ctl(data, ugen, 0x03, 0x0000 | saddr, 0x0000, 0x0002);
-
-    /* Power off */
+    /* 電源を切る */
     usleep (50 * 1000);
-    send_ctl(data, ugen, 0x08, 0xd400, 0x0000, 0x0001);
-    send_ctl(data, ugen, 0x08, 0x0808, 0x0000, 0x0001);
+    gpio(GPIO_D4, 0x00);
+    gpio(GPIO_TUNER_POWER, GPIO_TUNER_POWER);
     usleep (50 * 1000);
 
     saddr = 0;
@@ -542,13 +617,18 @@ Hdp::UsbProcFixInitB(int fd)
 void
 Hdp::send_ctl(uint8_t *data, int fd, uint8_t req, uint16_t val, uint16_t idx, uint16_t len)
 {
-//    fprintf( stderr, "fd = 0x%x, req = 0x%x, val = 0x%x\n", fd, req, val );
-
     usbdevfs_ctrltransfer ctrl = {
         USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE, req, val, idx, len, REQUEST_TIMEOUT, data
     };
 	
     usb_ctrl(fd, &ctrl);
+
+    // RECFRIIO_USB_TRACE=1 で、送った制御転送と返ってきた先頭 2 バイトを標準エラーに出す
+    static const bool trace = getenv("RECFRIIO_USB_TRACE") != NULL;
+    if (trace) {
+        fprintf(stderr, "usb req=%02x val=%04x idx=%04x len=%u -> %02x %02x\n",
+                req, val, idx, len, data[0], len > 1 ? data[1] : 0);
+    }
 }
 
 bool
