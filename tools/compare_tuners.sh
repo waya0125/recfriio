@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-DIR="/home/waya/claude-work/qrs-ut100b/comparison"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="${OUT_DIR:-$PWD/comparison}"   # 出力先（OUT_DIR で変えられる）
 mkdir -p "$DIR"
 cd "$DIR"
 
 export XDG_RUNTIME_DIR="/run/user/1000"
-export LD_LIBRARY_PATH="/home/waya/claude-work/qrs-ut100b/lib:$LD_LIBRARY_PATH"
 
 DURATION=30
 CH=19
@@ -54,7 +54,7 @@ docker exec -i coaxd timeout -s INT "$DURATION" coax tune --no-start --tuner "$P
 PID_PT3=$!
 
 echo "[3/3] Starting QRS-UT100B (recfriio --hdp)..."
-/home/waya/claude-work/qrs-ut100b/recfriio/recfriior5/recfriio --hdp "$CH" "$DURATION" "$DIR/ut100b_${CH}.ts" > "$DIR/ut100b.log" 2>&1 &
+"$HERE/../recfriior5/recfriio" --hdp "$CH" "$DURATION" "$DIR/ut100b_${CH}.ts" > "$DIR/ut100b.log" 2>&1 &
 PID_UT100B=$!
 
 echo "Recording in progress (waiting ${DURATION}s)..."
@@ -76,4 +76,4 @@ echo "Files generated:"
 ls -lh "$DIR"/*.ts
 
 echo ""
-python3 /home/waya/claude-work/qrs-ut100b/analyze_ts.py "$DIR/pt3_${CH}.ts" "$DIR/torne_${CH}.ts" "$DIR/ut100b_${CH}.ts"
+python3 "$HERE/analyze_ts.py" "$DIR/pt3_${CH}.ts" "$DIR/torne_${CH}.ts" "$DIR/ut100b_${CH}.ts"

@@ -33,6 +33,7 @@
   なので、Rust で一から作るより、Go で coax に機種を 1 つ足すほうが作業はずっと少ない見込み。  
   Windows（WinUSB・BonDriver）まで含めて一本にしたいなら、この設計書の Rust 案に意味が残る。
 - 移すときの物差し: `RECFRIIO_USB_TRACE=1` で recfriio が送る制御転送を全部記録できる。  
+  ch19 を開く・選局・閉じるまでの記録を `docs/reference/usb-trace-hdp-ch19.txt` に置いた（234 回）。  
   新しい実装が同じ命令を送るかを、この記録と比べて確かめられる。
 - 復号の物差し: `make -C recfriior5 test`（実機のヌルパケットと、旧 `decrypt.c` の出力を答えにした試験）。
 - 注意: hdus_drv（HDUS 用の Linux ドライバー）の資料には、HDUSF のファームではリクエスト `0x19` と、止めない `0x0e` がデバイスを固めるとある。  
