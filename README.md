@@ -33,7 +33,7 @@ Linux 環境向けの USB デジタルテレビチューナー録画プログラ
 ### 必要パッケージ (Ubuntu / Debian)
 ```bash
 sudo apt update
-sudo apt install build-essential libglib2.0-dev libboost-thread-dev libusb-dev
+sudo apt install build-essential pkg-config libglib2.0-dev libpcsclite-dev
 ```
 
 ### ビルド手順

@@ -4,6 +4,7 @@
 #ifndef _AUTO_CLOSER_HPP_
 #define _AUTO_CLOSER_HPP_
 
+#include <unistd.h>
 #include <stdio.h>
 
 /**

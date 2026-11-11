@@ -14,7 +14,7 @@
  * リソースを開放する。
  */
 void
-B25Decoder::close() throw ()
+B25Decoder::close() noexcept
 {
 	if (b25 != NULL) {
 		b25->release(b25);
@@ -32,7 +32,7 @@ B25Decoder::close() throw ()
  * @exception b25_error 初期化エラー
  */
 void
-B25Decoder::open() throw (b25_error)
+B25Decoder::open()
 {
 	int stat = 0;
 	
@@ -93,7 +93,7 @@ B25Decoder::open() throw (b25_error)
  * @exception b25_error エラー
  */
 void
-B25Decoder::flush() throw (b25_error)
+B25Decoder::flush()
 {
 	int stat = b25->flush(b25);
 	if (stat < 0) {
@@ -110,7 +110,7 @@ B25Decoder::flush() throw (b25_error)
  * @exception b25_error エラー
  */
 void
-B25Decoder::put(const uint8_t *buf, int32_t len) throw (b25_error)
+B25Decoder::put(const uint8_t *buf, int32_t len)
 {
 	// 内部でmemcpyされることを期待してconstを外す。
 	ARIB_STD_B25_BUFFER sbuf = { (uint8_t *)buf, len };
@@ -130,7 +130,7 @@ B25Decoder::put(const uint8_t *buf, int32_t len) throw (b25_error)
  * @exception b25_error エラー
  */
 int32_t
-B25Decoder::get(const uint8_t **bufp) throw (b25_error)
+B25Decoder::get(const uint8_t **bufp)
 {
 	ARIB_STD_B25_BUFFER dbuf = { NULL, 0 };
 	int stat = b25->get(b25, &dbuf);

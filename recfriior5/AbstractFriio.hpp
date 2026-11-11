@@ -4,6 +4,7 @@
 #ifndef _ABSTRACT_FRIIO_H_
 #define _ABSTRACT_FRIIO_H_
 
+#include <thread>
 #include "setting.hpp"
 #include "error.hpp"
 #include "RingBuf.hpp"
@@ -179,9 +180,9 @@ protected:
 	PopIoThread*  pop_func;
 	
 	/** 読み出しスレッド 発行側 スレッド */
-	boost::thread* push_thread;
+	std::thread* push_thread;
 	/** 読み出しスレッド 受信側 スレッド */
-	boost::thread* pop_thread;
+	std::thread* pop_thread;
 	
 	/**
 	 * デバイスファイルがFriioの物かを確認する。
@@ -204,7 +205,7 @@ protected:
 	 * 初期化されていない場合exceptionを投げる。
 	 * @exception not_ready_error 初期化されていない
 	 */
-	void assertInitialized() throw (not_ready_error);
+	void assertInitialized();
 	
 	/**
 	 * Request=0x40 RequestNo=0x01 で Length=0 のベンダリクエストを送信

@@ -8,17 +8,9 @@
 #include <exception>
 #include <stdexcept>
 #include <cstddef>
-#include <boost/thread.hpp>
-#include <boost/thread/condition.hpp>
-#include <boost/version.hpp>
-#if BOOST_VERSION < 105000
-#include <boost/thread/xtime.hpp>
-namespace boost {
-  enum xtime_compat {
-    TIME_UTC_=TIME_UTC
-  };
-}
-#endif
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 
 // バッファのオーバーフロー時に投げられます。
 class overflow_error : public std::runtime_error {
@@ -77,13 +69,13 @@ protected:
 	// peekPopPtrのmutexをロックしない版
 	const T *peekPopPtrWithoutLock();
 	
-	// xtime を msec ミリ秒後の値にする。
-	void xtimeAfterMsec(boost::xtime *xtime, unsigned int msec);
+	// 時刻は単調時計で持つ（壁時計を合わせても待ち時間が狂わないように）。
+	typedef std::chrono::steady_clock clock;
 	
 	// リングバッファのノード
 	struct Node {
 		Node *next; // 次
-		boost::xtime timeout; // タイムアウト時刻
+		clock::time_point timeout; // タイムアウト時刻
 		void (*timeout_handler)(T *); // タイムアウトハンドラ
 		bool is_wait;  // 書込み中?
 		bool is_ready; // 読込み可能か？
@@ -97,8 +89,8 @@ protected:
 	Node *node_push;
 	Node *node_pop;
 	
-	boost::mutex     mutex;
-	boost::condition cond;
+	std::mutex              mutex;
+	std::condition_variable cond;
 
 	unsigned int wait_count;
 	unsigned int ready_count;
@@ -115,7 +107,7 @@ RingBuf<T>::RingBuf(size_t size) {
 	// リングバッファ設定
 	for (uint32_t i = 0; i < size; i++) {
 		node_top[i].next = (i+1 == size) ? &(node_top[0]) : &(node_top[i+1]);
-		boost::xtime_get(&(node_top[i].timeout), boost::TIME_UTC_);
+		node_top[i].timeout = clock::now();
 		node_top[i].timeout_handler = NULL;
 		node_top[i].is_ready = false;
 		node_top[i].is_wait  = false;
@@ -130,7 +122,7 @@ RingBuf<T>::~RingBuf() {
 template <class T>
 bool
 RingBuf<T>::isOverflow() {
-	boost::mutex::scoped_lock lock(mutex);
+	std::unique_lock<std::mutex> lock(mutex);
 	return is_overflow;
 }
 
@@ -138,7 +130,7 @@ RingBuf<T>::isOverflow() {
 template <class T>
 unsigned int 
 RingBuf<T>::getWaitCount() {
-	boost::mutex::scoped_lock lock(mutex);
+	std::unique_lock<std::mutex> lock(mutex);
 	return wait_count - ready_count;
 }
 
@@ -146,7 +138,7 @@ RingBuf<T>::getWaitCount() {
 template <class T>
 unsigned int 
 RingBuf<T>::getReadyCount() {
-	boost::mutex::scoped_lock lock(mutex);
+	std::unique_lock<std::mutex> lock(mutex);
 	return ready_count;
 }
 
@@ -154,7 +146,7 @@ RingBuf<T>::getReadyCount() {
 template <class T>
 T *
 RingBuf<T>::getPushPtr(unsigned int timeout_msec, void (*timeout_handler)(T *)) {
-	boost::mutex::scoped_lock lock(mutex);
+	std::unique_lock<std::mutex> lock(mutex);
 	if (is_overflow) {
 		throw overflow_error("RingBuf was overflowed.");
 	}
@@ -166,8 +158,7 @@ RingBuf<T>::getPushPtr(unsigned int timeout_msec, void (*timeout_handler)(T *)) 
 	}
 	
 	T *data = &(node_push->data);
-	boost::xtime_get(&(node_push->timeout), boost::TIME_UTC_);
-	xtimeAfterMsec(&(node_push->timeout), timeout_msec);
+	node_push->timeout = clock::now() + std::chrono::milliseconds(timeout_msec);
 	node_push->timeout_handler = timeout_handler;
 	node_push->is_wait = true;
 	wait_count++;
@@ -182,7 +173,7 @@ RingBuf<T>::getPushPtr(unsigned int timeout_msec, void (*timeout_handler)(T *)) 
 template <class T>
 void
 RingBuf<T>::setReady(T *node) {
-	boost::mutex::scoped_lock lock(mutex);
+	std::unique_lock<std::mutex> lock(mutex);
 	if (is_overflow) {
 		throw overflow_error("RingBuf was overflowed.");
 	}
@@ -219,12 +210,11 @@ RingBuf<T>::getPopPtr() {
 template <class T>
 const T *
 RingBuf<T>::getPopPtr(unsigned int timeout_msec) {
-	boost::mutex::scoped_lock lock(mutex);
+	std::unique_lock<std::mutex> lock(mutex);
 	if (is_overflow) {
 		throw overflow_error("RingBuf was overflowed.");
 	}
 	
-	boost::xtime wait_until;
 	const T *data = NULL;
 	while(true) {
 		if (is_interrupted) {
@@ -237,11 +227,8 @@ RingBuf<T>::getPopPtr(unsigned int timeout_msec) {
 		}
 		
 		// Timeout時間の厳密性を考えるのが面倒なので適当に処理する。
-		boost::xtime_get(&wait_until, boost::TIME_UTC_);
-		xtimeAfterMsec(&wait_until, timeout_msec);
-
 		// timeout_msecで待つ
-		if (!cond.timed_wait(lock, wait_until)) {
+		if (cond.wait_for(lock, std::chrono::milliseconds(timeout_msec)) == std::cv_status::timeout) {
 			return NULL; // Timeout;
 		}
 	}
@@ -254,7 +241,7 @@ RingBuf<T>::getPopPtr(unsigned int timeout_msec) {
 template <class T>
 const T *
 RingBuf<T>::peekPopPtr() {
-	boost::mutex::scoped_lock lock(mutex);
+	std::unique_lock<std::mutex> lock(mutex);
 	if (is_overflow) {
 		throw overflow_error("RingBuf was overflowed.");
 	}
@@ -266,7 +253,7 @@ RingBuf<T>::peekPopPtr() {
 template <class T>
 void
 RingBuf<T>::interrupt() {
-	boost::mutex::scoped_lock lock(mutex);	
+	std::unique_lock<std::mutex> lock(mutex);	
 	is_interrupted = true;
 	cond.notify_one();
 }
@@ -281,7 +268,7 @@ RingBuf<T>::peekPopPtrWithoutLock() {
 	if (node_pop != node_push) {
 		if (node_pop->is_ready) {
 			// リセットして返す。
-			boost::xtime_get(&(node_pop->timeout), boost::TIME_UTC_);
+			node_pop->timeout = clock::now();
 			node_pop->timeout_handler = NULL;
 			node_pop->is_ready = false;
 			node_pop->is_wait  = false;
@@ -294,9 +281,7 @@ RingBuf<T>::peekPopPtrWithoutLock() {
 			return data;
 		}
 		
-		boost::xtime now;
-		boost::xtime_get(&now, boost::TIME_UTC_);
-		if (boost::xtime_cmp(node_pop->timeout, now) <= 0) {
+		if (node_pop->timeout <= clock::now()) {
 			// Timeoutを過ぎている。
 			if (node_pop->timeout_handler) {
 				// timeout_handler呼出し
@@ -304,7 +289,7 @@ RingBuf<T>::peekPopPtrWithoutLock() {
 			}
 			
 			// リセットして次へ。
-			boost::xtime_get(&(node_pop->timeout), boost::TIME_UTC_);
+			node_pop->timeout = clock::now();
 			node_pop->timeout_handler = NULL;
 			node_pop->is_ready = false;
 			node_pop->is_wait  = false;
@@ -317,20 +302,6 @@ RingBuf<T>::peekPopPtrWithoutLock() {
 	}
 	
 	return NULL;
-}
-
-// xtime を msec ミリ秒後の値にする。
-template <class T>
-void
-RingBuf<T>::xtimeAfterMsec(boost::xtime *xtime, unsigned int msec) {
-	const uint64_t NANOSECONDS_PER_SECOND = 1000*1000*1000;
-	
-	uint64_t nsec = (uint64_t)xtime->nsec + (uint64_t)(msec % 1000) * 1000 * 1000;
-	uint64_t sec  = nsec / NANOSECONDS_PER_SECOND;
-	nsec -= sec * NANOSECONDS_PER_SECOND;
-	
-	xtime->sec  += sec + msec / 1000;
-	xtime->nsec  = nsec;
 }
 
 #endif

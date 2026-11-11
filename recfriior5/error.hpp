@@ -28,12 +28,12 @@ public:
 		: std::runtime_error(__arg) {};
 	
 	/** デストラクタ */
-	~traceable_error() throw () {};
+	~traceable_error() noexcept {};
 	
 	/**
 	 * エラーメッセージ表示
 	 */
-	const char* whatNoTrace() const throw() {
+	const char* whatNoTrace() const noexcept {
 		return what();
 	};
 };

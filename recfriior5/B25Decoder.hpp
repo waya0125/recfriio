@@ -38,7 +38,7 @@ public:
 	/**
 	 * デストラクタ
 	 */
-	virtual ~B25Decoder() throw () {
+	virtual ~B25Decoder() noexcept {
 		close();
 	};
 	
@@ -46,7 +46,7 @@ public:
 	 * Multi2のround数(default = 4)を設定する。
 	 * @param paramRound Multi2のround数
 	 */
-	void setRound(int32_t paramRound) throw () {
+	void setRound(int32_t paramRound) noexcept {
 		round = paramRound;
 	};
 	
@@ -54,7 +54,7 @@ public:
 	 * nullパケットを削除するかを設定する。
 	 * @param paramStrip trueの場合nullパケットを削除する
 	 */
-	void setStrip(bool paramStrip) throw () {
+	void setStrip(bool paramStrip) noexcept {
 		strip = paramStrip;
 	};
 	
@@ -62,26 +62,26 @@ public:
 	 * EMMの処理を行なうかを設定する。
 	 * @param paramEmm trueの場合EMMの処理を行なう
 	 */
-	void setEmmProcess(bool paramEmm) throw () {
+	void setEmmProcess(bool paramEmm) noexcept {
 		emm = paramEmm;
 	};
 	
 	/**
 	 * リソースを開放する。
 	 */
-	void close() throw ();
+	void close() noexcept;
 	
 	/**
 	 * デコーダの初期化を行なう。
 	 * @exception b25_error 初期化エラー
 	 */
-	void open() throw (b25_error);
+	void open();
 	
 	/**
 	 * デコーダへ入力ストリームの完了を伝える。
 	 * @exception b25_error エラー
 	 */
-	void flush() throw (b25_error);
+	void flush();
 	
 	/**
 	 * デコーダへストリームを入力する。
@@ -89,7 +89,7 @@ public:
 	 * @param len データの長さ
 	 * @exception b25_error エラー
 	 */
-	void put(const uint8_t *buf, int32_t len) throw (b25_error);
+	void put(const uint8_t *buf, int32_t len);
 	
 	/**
 	 * デコーダからストリームを取得する。
@@ -97,7 +97,7 @@ public:
 	 * @return データの長さ
 	 * @exception b25_error エラー
 	 */
-	int32_t get(const uint8_t **bufp) throw (b25_error);
+	int32_t get(const uint8_t **bufp);
 	
 protected:
 	/** Multi2のround数(default = 4) */

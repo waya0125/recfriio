@@ -1,14 +1,15 @@
 // $Id: AbstractFriio.cpp 10379 2012-02-16 17:51:49Z clworld $
 // 白黒共通abstractクラス
 
+#include <unistd.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <errno.h>
 
 #include <sstream>
 
-#include <boost/filesystem/path.hpp>
-#include <boost/filesystem/operations.hpp>
+#include <filesystem>
+#include <functional>
 
 #include "usbops.hpp"
 #include "AutoCloser.hpp"
@@ -30,8 +31,8 @@ AbstractFriio::startStream()
 	push_func = new PushIoThread(tunerFd, endpoint, requestReserveNum, requestPollingWait, ringBuf);
 	pop_func  = new PopIoThread(tunerFd, ringBuf);
 	
-	push_thread = new boost::thread(boost::ref(*push_func));
-	pop_thread  = new boost::thread(boost::ref(*pop_func));
+	push_thread = new std::thread(std::ref(*push_func));
+	pop_thread  = new std::thread(std::ref(*pop_func));
 	
 	isStream = true;
 }
@@ -129,7 +130,7 @@ AbstractFriio::isStreamReady()
  * @exception not_ready_error 初期化されていない
  */
 void
-AbstractFriio::assertInitialized() throw (not_ready_error)
+AbstractFriio::assertInitialized()
 {
 	if (!initialized) {
 		throw not_ready_error("not initialized.");
@@ -180,23 +181,23 @@ AbstractFriio::is_friio(const std::string &devfile)
 std::vector<std::string>
 AbstractFriio::searchFriios()
 {
-	boost::filesystem::path base_dir = boost::filesystem::path(BASE_DIR_UDEV);
-	if (!boost::filesystem::exists(base_dir) || !boost::filesystem::is_directory(base_dir)) {
-		base_dir = boost::filesystem::path(BASE_DIR_USBFS);
+	std::filesystem::path base_dir = std::filesystem::path(BASE_DIR_UDEV);
+	if (!std::filesystem::exists(base_dir) || !std::filesystem::is_directory(base_dir)) {
+		base_dir = std::filesystem::path(BASE_DIR_USBFS);
 	}
 	
 	if (log) *log << "Search friios from dir: " << base_dir.string() << std::endl;
 	
 	std::vector<std::string> friios;
 	// base_dirからfriioをデバイスファイルを探す。
-	boost::filesystem::directory_iterator end;
-	for (boost::filesystem::directory_iterator bus_iter(base_dir); bus_iter != end; ++bus_iter) {
+	std::filesystem::directory_iterator end;
+	for (std::filesystem::directory_iterator bus_iter(base_dir); bus_iter != end; ++bus_iter) {
 		// バスでループ
-		if (boost::filesystem::is_directory(*bus_iter)) {
+		if (std::filesystem::is_directory(*bus_iter)) {
 			// ディレクトリのみ
-			for (boost::filesystem::directory_iterator dev_iter(*bus_iter); dev_iter != end; ++dev_iter) {
+			for (std::filesystem::directory_iterator dev_iter(*bus_iter); dev_iter != end; ++dev_iter) {
 				// バスに繋がってるデバイスでループ
-				if (!boost::filesystem::is_directory(*dev_iter)) {
+				if (!std::filesystem::is_directory(*dev_iter)) {
 					// Friioであるかチェック
 					if (is_friio(dev_iter->path().string())) {
 						// ここまで来たらこのデバイスはfriioです。
@@ -216,7 +217,7 @@ AbstractFriio::searchFriios()
  * @return int ファイルディスクリプタ
  */
 int
-detectLock(std::string& lockFile) throw (io_error)
+detectLock(std::string& lockFile)
 {
 	// umaskを変更し、group,otherに書き込み権限を付加する。
 	mode_t orgmask = umask(0);

@@ -38,7 +38,7 @@
 /* maximum write length at once */
 #define SIZE_CHUNK 1316
 
-#include <boost/scoped_ptr.hpp>
+#include <memory>
 
 #include "setting.hpp"
 #include "error.hpp"
@@ -470,7 +470,7 @@ main(int argc, char *argv[])
 	Args args = parseOption(argc, argv);
 	// 正常終了時戻り値
 	int result = 0;
-	boost::scoped_ptr<Recordable> tuner(NULL);
+	std::unique_ptr<Recordable> tuner;
 	timeval tv_start;
 #ifdef UDP
 	Udp udp;
