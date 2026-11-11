@@ -3,9 +3,9 @@
 
 ## 0. 2026-11-11 時点の更新（この設計書を書いたあとに分かったこと）
 
-この設計書は、recfriio の UT100B 対応を詰める前に書いたもの。
-そのあと実機と資料で分かったことで、前提がいくつか変わった。
-現代化の計画を立て直すときは、まずここを読む。
+この設計書は、recfriio の UT100B 対応を詰める前に書いたもの。  
+そのあと実機と資料で分かったことで、前提がいくつか変わった。  
+現代化の計画を立て直すときは、まずここを読む。  
 詳しくは `docs/QRS-UT100B.md`。
 
 ### 変わった前提
@@ -23,24 +23,24 @@
 | 「ASV5211 の FIFO は数 KB」 | 前提として書いている | 確かめていない推測 |
 
 ### 現代化の進め方に効くこと
-- **coax にもう部品がある。**
-  ASV5211 のブリッジ（ファームの送り込み、守られた書き込み）、ASIE5606 のカードの T=1、TC90522 の制御が、Go で書かれて動いている（PLEX の PX-S3U 系向け）。
+- **coax にもう部品がある。**  
+  ASV5211 のブリッジ（ファームの送り込み、守られた書き込み）、ASIE5606 のカードの T=1、TC90522 の制御が、Go で書かれて動いている（PLEX の PX-S3U 系向け）。  
   UT100B のために足りないのは、主に次の 3 つ:
   1. 選局のレジスタの書き込み（`recfriior5/Hdp.cpp` の `setChannel` と初期化。名前付きの定数になっている）
   2. スクランブルの復号（標準の DES と鍵 2 つ）
   3. UT100B の USB ID（`3275:7020`）と、付属 CD からのファームの取り出し
 
-  なので、Rust で一から作るより、Go で coax に機種を 1 つ足すほうが作業はずっと少ない見込み。
+  なので、Rust で一から作るより、Go で coax に機種を 1 つ足すほうが作業はずっと少ない見込み。  
   Windows（WinUSB・BonDriver）まで含めて一本にしたいなら、この設計書の Rust 案に意味が残る。
-- 移すときの物差し: `RECFRIIO_USB_TRACE=1` で recfriio が送る制御転送を全部記録できる。
+- 移すときの物差し: `RECFRIIO_USB_TRACE=1` で recfriio が送る制御転送を全部記録できる。  
   新しい実装が同じ命令を送るかを、この記録と比べて確かめられる。
 - 復号の物差し: `make -C recfriior5 test`（実機のヌルパケットと、旧 `decrypt.c` の出力を答えにした試験）。
-- 注意: hdus_drv（HDUS 用の Linux ドライバー）の資料には、HDUSF のファームではリクエスト `0x19` と、止めない `0x0e` がデバイスを固めるとある。
+- 注意: hdus_drv（HDUS 用の Linux ドライバー）の資料には、HDUSF のファームではリクエスト `0x19` と、止めない `0x0e` がデバイスを固めるとある。  
   UT100B（PLEX のファーム）では `0x19` の読み出しは問題なかったが、ファームが変われば話が変わるかもしれない。
 
 ## 1. はじめに
 
-Quixun QRS-UT100B（ASICEN ASV5211 + ASIE5606）は、メーカー（クイックサン）の破産（2011年）により公式ソフトウェア・ドライバ（32bit XP/Vista 向け未署名 `.sys`）の供給が完全に途絶えたレガシーハードウェアです。
+Quixun QRS-UT100B（ASICEN ASV5211 + ASIE5606）は、メーカー（クイックサン）の破産（2011年）により公式ソフトウェア・ドライバ（32bit XP/Vista 向け未署名 `.sys`）の供給が完全に途絶えたレガシーハードウェアです。  
 これまで Linux では 2008 年製の `recfriio` フォーク（C/C++、Boost 1.74 依存）が細々と使われてきましたが、Windows 10/11 64bit では未署名ドライバの強制無効化なしには動作すらしない状態でした。
 
 先行する優良事例である [`i4M1k0SU/DTH10-series-driver`](https://github.com/i4M1k0SU/DTH10-series-driver)（BUFFALO DT-H10 シリーズを Rust + `nusb` + WinUSB で現代化）の設計思想を取り入れ、**Linux（Mirakurun / 録画サーバー）と Windows 11（TVTest 直挿し視聴）を単一の Rust コードベースで完全蘇生** させるための詳細技術調査と注意点をここにまとめます。
@@ -99,10 +99,10 @@ UT100B は電源投入時、未初期化の ROM 状態で起動し、ファー�
 
 ### (3) 標準出力のバイナリモード差異（Windows の改行コード変換トラップ）
 
-Linux において `std::io::stdout()` は透過的なバイナリパイプですが、Windows の標準 C ランタイム（CRT）では標準出力がテキストモード（`_O_TEXT`）で初期化される場合があります。
+Linux において `std::io::stdout()` は透過的なバイナリパイプですが、Windows の標準 C ランタイム（CRT）では標準出力がテキストモード（`_O_TEXT`）で初期化される場合があります。  
 テキストモードの場合、TS パケット内の `0x0A`（LF）が自動的に `0x0D 0x0A`（CR+LF）に書き換えられ、**放送波ストリームが不可逆的に破壊されます**。
 
-- **Rust での対策**:
+- **Rust での対策**:  
   Windows ターゲット時（`#[cfg(windows)]`）は、標準出力へのパイプ開始時に Win32 API または C ランタイムでバイナリモードを強制設定する：
   ```rust
   #[cfg(windows)]
@@ -115,33 +115,33 @@ Linux において `std::io::stdout()` は透過的なバイナリパイプで�
 
 ### (4) Windows TVTest BonDriver の MSVC C++ ABI & RTTI 差異
 
-Windows で TVTest から直接チューナーを認識させるには、`BonDriver_UT100B.dll`（`cdylib`）を提供する必要があります。
+Windows で TVTest から直接チューナーを認識させるには、`BonDriver_UT100B.dll`（`cdylib`）を提供する必要があります。  
 ここには Rust から C++ クラスを模倣する際の深い罠が存在します。
 
 #### ① MSVC vtable の隣接オーバーロード逆順配置
-MSVC コンパイラは、クラス定義で同一名称のオーバーロード関数が連続している場合、**vtable に逆順で関数ポインタを配置する** という仕様があります。
+MSVC コンパイラは、クラス定義で同一名称のオーバーロード関数が連続している場合、**vtable に逆順で関数ポインタを配置する** という仕様があります。  
 `IBonDriver` の `GetTsStream`:
 ```cpp
 virtual const BOOL GetTsStream(BYTE *pDst, DWORD *pdwSize, DWORD *pdwRemain);   // (1)
 virtual const BOOL GetTsStream(BYTE **ppDst, DWORD *pdwSize, DWORD *pdwRemain); // (2)
 ```
-Rust 側の vtable 構造体定義では、**(2) の `BYTE **` を先に、(1) の `BYTE *` を後に定義** しなければなりません。
+Rust 側の vtable 構造体定義では、**(2) の `BYTE **` を先に、(1) の `BYTE *` を後に定義** しなければなりません。  
 これを間違えると、TVTest が呼び出した瞬間に不正ポインタアクセス（`0xC0000005`）でクラッシュします。
 
 #### ② MSVC RTTI（`dynamic_cast`）の偽装
-TVTest や LibISDB は、`CreateBonDriver()` で返されたポインタに対して `dynamic_cast<IBonDriver2*>` を実行します。
-MSVC の `dynamic_cast` は vtable の直前（`vptr[-1]`）にある **Complete Object Locator (COL)** を走査し、型ディスクリプタの名前文字列（`".?AVIBonDriver2@@"`）を比較します。
+TVTest や LibISDB は、`CreateBonDriver()` で返されたポインタに対して `dynamic_cast<IBonDriver2*>` を実行します。  
+MSVC の `dynamic_cast` は vtable の直前（`vptr[-1]`）にある **Complete Object Locator (COL)** を走査し、型ディスクリプタの名前文字列（`".?AVIBonDriver2@@"`）を比較します。  
 Rust でこの MSVC RTTI メタデータ構造体を静的に配置して `vptr[-1]` にポインタを埋め込むことで、C++ コンパイラなしで `dynamic_cast` を成功させることができます（`DTH10-series-driver` の `rtti.rs` を完全準用）。
 
 #### ③ FFI 境界でのパニック捕捉（Panic Safety）
-Rust の `extern "system"` 関数からパニックが外側（C++ の TVTest 側）にアンワインドすると、未定義動作となりプロセスが即死（`abort`）します。
+Rust の `extern "system"` 関数からパニックが外側（C++ の TVTest 側）にアンワインドすると、未定義動作となりプロセスが即死（`abort`）します。  
 BonDriver の全エクスポート関数は `std::panic::catch_unwind(|| { ... })` でラップし、エラー時は安全に `FALSE` または `NULL` を返さなければなりません。
 
 ### (5) IPC（プロセス間通信）の差異
 
 チューナー常駐デーモン（`ut100b serve`）とクライアント（`ut100b stream` / BonDriver）の間でストリームを中継する場合：
 - **Linux**: UNIX ドメインソケット（`/run/ut100b/ut100b.sock`）
-- **Windows**: 名前付きパイプ（`\\.\pipe\ut100b`）またはローカル TCP（`127.0.0.1:xxxxx`）
+- **Windows**: 名前付きパイプ（`\\.\pipe\ut100b`）またはローカル TCP（`127.0.0.1:xxxxx`）  
 `tokio` を用いることで、プラットフォームごとに `tokio::net::UnixListener` と `tokio::net::windows::named_pipe::ServerOptions` を切り替えて綺麗に共通化可能です。
 
 ---
@@ -150,10 +150,10 @@ BonDriver の全エクスポート関数は `std::panic::catch_unwind(|| { ... }
 
 ### 注意点 1: TS パケット境界のアラインメントと 3 パケット同期検証
 
-USB のバルク転送は 16,384 バイト（512 × 32）や 39,936 バイト（512 × 78）といった単位で届きますが、**これは 188 バイト（TS パケットサイズ）の整数倍ではありません**（例: `16384 = 188 * 87 + 28` バイト）。
+USB のバルク転送は 16,384 バイト（512 × 32）や 39,936 バイト（512 × 78）といった単位で届きますが、**これは 188 バイト（TS パケットサイズ）の整数倍ではありません**（例: `16384 = 188 * 87 + 28` バイト）。  
 バルク転送バッファの先頭が TS パケットの先頭（`0x47`）である保証は全くありません。
 
-- **落とし穴**:
+- **落とし穴**:  
   バッファの先頭から無条件に `packetDecrypt` を適用すると、暗号化ブロックのオフセットが狂い、全ストリームがノイズ化します。
 - **実装必須ロジック (`TsAligner`)**:
   1. `ring_buffer` に受信データを蓄積。
@@ -183,29 +183,29 @@ sequenceDiagram
 
 UT100B のハードウェア XOR / 疑似 DES 暗号は、パケットごとに 8 バイト単位の換字・転置ラウンドを 8 回繰り返します。
 - **テーブルサイズ**: `table[8][64]`（`uint32_t` × 512 = 2,048 バイト、L1 キャッシュに完全収容可能）。
-- **注意点**:
-  Rust で実装する際、スライスインデックス境界チェック（Bounds Check）がループ内で走るとスループットが低下します。
+- **注意点**:  
+  Rust で実装する際、スライスインデックス境界チェック（Bounds Check）がループ内で走るとスループットが低下します。  
   `const TABLE: [[u32; 64]; 8]` として定数定義し、ビット演算（`& 0x3F`）により 64 要素未満であることがコンパイラに自明な形に記述することで、境界チェックをゼロにし、LLVM によるレジスタ割り当て・インライン展開を最大化させます。
 
 ### 注意点 3: USB バルク転送の連続読み込みキュー（In-flight Depth）
 
-地デジの TS レートは約 17 Mbps（約 2.1 MB/s）に達します。
+地デジの TS レートは約 17 Mbps（約 2.1 MB/s）に達します。  
 シングルバッファで「読み込み完了 → 復号処理 → 次の読み込み要求」と同期的に処理していると、復号処理中に ASV5211 内部のハードウェア FIFO（数 KB 程度）が溢れ、**パケットドロップ（Drop / Continuity Counter Error）** が発生します。
 
-- **対策**:
-  常に **4 〜 8 個の転送要求をカーネル/ドライバ側に先行投入（In-flight）** しておきます。
+- **対策**:  
+  常に **4 〜 8 個の転送要求をカーネル/ドライバ側に先行投入（In-flight）** しておきます。  
   `nusb` の `StreamReader` パターンを用い、1 つのバッファが完了したら即座に次の空バッファを `submit` してから受信データを処理スレッドへ流す非同期パイプライン構成にします。
 
 ### 注意点 4: 内蔵 B-CAS（ASIE5606）と Multi2 復号方式
 
-UT100B には内蔵 B-CAS スロット（ASIE5606）があり、ASV5211 を経由して T=1 プロトコルで APDU を送受信できます。
+UT100B には内蔵 B-CAS スロット（ASIE5606）があり、ASV5211 を経由して T=1 プロトコルで APDU を送受信できます。  
 しかし、B-CAS カード自体は **ECM から暗号鍵（Multi2 スクランブル鍵）を取り出すだけ** であり、**TS パケット自体の Multi2 デスクランブル（ARIB STD-B25）はホストの CPU が行う必要があります**。
 
 - **構成の選択肢**:
-  1. **内部完結方式（推奨）**:
-     CLI 内部に純粋な Rust 製 Multi2 復号器（ARIB B25 Section Parser）を組み込み、`ut100b tune -c 19` だけで完全に復号済みのクリーンな TS を標準出力に吐き出す。
+  1. **内部完結方式（推奨）**:  
+     CLI 内部に純粋な Rust 製 Multi2 復号器（ARIB B25 Section Parser）を組み込み、`ut100b tune -c 19` だけで完全に復号済みのクリーンな TS を標準出力に吐き出す。  
      → Mirakurun に外部 B25 フィルタを噛ませる必要がなくなり、運用が極めてシンプルになる。
-  2. **Raw 出力方式**:
+  2. **Raw 出力方式**:  
      内蔵 B-CAS を使わず、放送波のまま（暗号化されたまま）TS を出力し、Mirakurun 側の `arib-b25-stream-test` や PC/SC カードリーダーに復号を任せるモード（`--raw`）も備えておく。
 
 ---
