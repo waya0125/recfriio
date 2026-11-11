@@ -195,33 +195,27 @@ Hdp::setChannel(BandType newBand, int newChannel)
 const float
 Hdp::getSignalLevel(void)
 {
-#if 1
-    /* HDUSと同じか不明なので、とりあえず THRESHOLD より大きい値を返しておく */
-    return  SIGNALLEVEL_RETRY_THRESHOLD + 8;
-#else
-    uint32_t val;
-    float p;
+    // 復調部（TC90522 の地上波側、I2C 0x20）の C/N のレジスタ 0x8b..0x8d（24 ビット）を読み、
+    // Linux の tc90522 ドライバーと同じ式で C/N 比（dB）にする。
     int ugen = tunerFd;
     uint8_t data[0x200];
 
     send_ctl(data, ugen, 0x02, 0x8b20, 0x0000, 0x0002);
-    val = data[1] << 16;
+    uint32_t val = (uint32_t)data[1] << 16;
     send_ctl(data, ugen, 0x02, 0x8c20, 0x0000, 0x0002);
-    val |= data[1] << 8;
+    val |= (uint32_t)data[1] << 8;
     send_ctl(data, ugen, 0x02, 0x8d20, 0x0000, 0x0002);
     val |= data[1];
 
-    p = 20.0 * log10(5505024.0 / (double)val);
-    if (isinf(p))
-        p = 0.0f;
-    if (log) {
-	double p2 = 10.0 * log10(5505024.0 / (double)val);
-	double cnr = 0.000024 * p2 * p2 * p2 * p2 - 0.0016 * p2 * p2 * p2 + 0.0398 * p2 * p2 + 0.5491 * p2 + 3.0965;
-	*log << "CNR: " << cnr << std::endl;
+    if (val == 0) {
+        if (log) *log << "CNR: register 0 (no lock?)" << std::endl;
+        return 0.0f;
     }
-
-    return p;
-#endif
+    double p = 10.0 * log10(5505024.0 / (double)val);
+    double cnr = 0.000024 * p * p * p * p - 0.0016 * p * p * p + 0.0398 * p * p + 0.5491 * p + 3.0965;
+    if (cnr < 0) cnr = 0;
+    if (log) *log << "CNR: " << cnr << " dB (raw 0x" << std::hex << val << std::dec << ")" << std::endl;
+    return (float)cnr;
 }
 
 
@@ -243,9 +237,19 @@ Hdp::getStream(const uint8_t** bufp, int timeoutMsec)
 
     const size_t tssize = 188;
 
-    const int readsize = AbstractFriio::getStream( bufp, timeoutMsec );
+    int readsize = AbstractFriio::getStream( bufp, timeoutMsec );
     if( *bufp == NULL ) return readsize;
     if( ! readsize ) return readsize;
+
+    // 受信の始めは、前回の受信の終わりが UT100B の中に残っていて先に出てくる
+    // （PCR が前回の録画の終わりとつながる）。決まった量を捨てる。
+    if( stale_remaining ){
+        size_t drop = (size_t)readsize < stale_remaining ? (size_t)readsize : stale_remaining;
+        stale_remaining -= drop;
+        *bufp += drop;
+        readsize -= drop;
+        if( ! readsize ) return 0;
+    }
 
     /* XOR 処理 */
 
@@ -374,6 +378,7 @@ Hdp::UsbProcBegin(int fd)
 
     buffersize = 0;
     buffer_remainsize = 0;
+    stale_remaining = HDP_STALE_DISCARD_BYTES;
 
     /* HDP を開く */
 

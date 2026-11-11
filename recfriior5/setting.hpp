@@ -32,6 +32,8 @@ const unsigned int HDUS_REQUEST_RESERVE_NUM  = 32;
 const unsigned int HDUS_REQUEST_POLLING_WAIT = 2;
 const unsigned int HDP_REQUEST_RESERVE_NUM   = 32;
 const unsigned int HDP_REQUEST_POLLING_WAIT  = 2;
+// 開いた直後に捨てる量。前回の残りは見た限り 71 パケット（約 13 KB）以内だったので、余裕を見て 2 回分の転送。
+const size_t       HDP_STALE_DISCARD_BYTES   = 2 * 16384;
 #endif
 
 const unsigned int REQUEST_TIMEOUT    = 1000; // USBリクエストタイムアウト(ms)

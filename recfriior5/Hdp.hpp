@@ -14,6 +14,8 @@ class Hdp : public AbstractFriio
     uint8_t* buffer;
     size_t buffersize;
     size_t buffer_remainsize;
+    // 開いた直後に捨てるバイト数（前回の受信の残りが UT100B の中から先に出てくる）
+    size_t stale_remaining;
 
     int tunerCount;
 
