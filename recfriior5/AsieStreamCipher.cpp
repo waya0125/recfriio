@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KASHIWAYA Rikuto
 //
-// ASIE5606 が USB に流す TS のスクランブルを解く（QRS-UT100B / MonsterTV HDUS 系の DES 方式）。
+// ASIE5606 が USB 転送で TS にかける DES を外す（QRS-UT100B / MonsterTV HDUS 系）。
 //
-// スクランブルの中身（docs/QRS-UT100B.md の「TS のスクランブル」）:
+// ASIE5606 は、復調器から受けた TS をブリッジ（ASV5211）へ渡すとき、各パケットに DES をかける。
+// これは基板の中の IC どうしの転送にかかる暗号で、放送の暗号（ARIB STD-B25、MULTI2）とは別のもの。
+// ここで外したあとの TS は、放送のスクランブルがかかったまま。
+// 放送のスクランブルを外すのは arib25（--b25）で、ECM とワーク鍵の処理は B-CAS カードが受け持つ。
+// 以前は AsieDescrambler という名前だったが、B25 と紛らわしいので変えた。
+//
+// 外し方（docs/QRS-UT100B.md の「ASIE5606 の USB 転送の暗号」）:
 //   1. 4 バイトのヘッダーはそのまま。
 //   2. 残りの 184 バイトに、8 バイト周期の値 kWhitening を XOR する。
 //   3. 先頭の 128 バイトを DES 鍵 kKeyHead で、残りの 56 バイトを DES 鍵 kKeyTail で、ECB で復号する。
@@ -11,9 +17,9 @@
 //
 // DES は FIPS 46-3 のとおり。S 箱・置換の表は規格の値をそのまま書き、速さのための
 // 「S 箱と P 置換をまとめた表」と鍵スケジュールは、最初に使うときにそこから組み立てる。
-// 以前の decrypt.c（「似非 DES」）と、出力が 1 バイトも変わらないことを確かめてある（test_descramble.cpp）。
+// 以前の decrypt.c（「似非 DES」）と、出力が 1 バイトも変わらないことを確かめてある（test_stream_cipher.cpp）。
 
-#include "AsieDescrambler.hpp"
+#include "AsieStreamCipher.hpp"
 
 #include <mutex>
 
@@ -186,7 +192,7 @@ void decryptBlocks(const Schedule &schedule, uint8_t *data, int blocks)
 } // namespace
 
 void
-asieDescramblePacket(const uint8_t *src, uint8_t *dst)
+asieDecryptPacket(const uint8_t *src, uint8_t *dst)
 {
     std::call_once(tablesBuilt, buildTables);
 

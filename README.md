@@ -14,7 +14,7 @@ STZ 版（Friio・HDUS 系に対応）をもとに、**Quixun QRS-UT100B**（ASI
     外付けのカードリーダーは要りません（外付けを使うときは `--pcsc`）。
   - 本当の C/N（信号の質）を読む。  
     受け始めに出てくる前回の受信の残りを捨てる。
-  - TS のスクランブルを解く処理（旧 `decrypt.c`、「似非 DES」）を、規格どおりの DES と 2 つの鍵で書き直し（`make -C recfriior5 test` で照合できます）。
+  - ASIE5606 が USB 転送で TS にかける暗号を外す処理（旧 `decrypt.c`、「似非 DES」。放送の B25 とは別のもの）を、規格どおりの DES と 2 つの鍵で書き直し（`make -C recfriior5 test` で照合できます）。
   - レジスタと命令に名前を付けました（`recfriior5/Hdp.cpp` の先頭）。
 - 詳しい仕様と調べた結果は [`docs/QRS-UT100B.md`](docs/QRS-UT100B.md) にあります。
 

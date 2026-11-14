@@ -30,7 +30,7 @@
 #include "usbops.hpp"
 #include "Hdp.hpp"
 
-#include "AsieDescrambler.hpp"
+#include "AsieStreamCipher.hpp"
 
 Hdp::Hdp()
     : AbstractFriio(), saddr( 0 ), buffer( NULL )
@@ -57,7 +57,7 @@ Hdp::~Hdp()
  *
  *   ASV5211（USB ブリッジ） ── I2C ─┬─ 0x20: 復調部（TC90522 の地上波側。C/N の式が合うことで確かめた）
  *                                   │         └ 中継レジスタ 0xfe ─ 0xc0: チューナー（ソニー製と見られる。IC の型番は不明。NM120 ではない）
- *                                   └─ 0x4a / 0x5a: ASIE5606（B-CAS カードの IC。TS のスクランブルも受け持つ）
+ *                                   └─ 0x4a / 0x5a: ASIE5606（B-CAS カードの IC。USB 転送の TS に DES もかける）
  *
  * 復調部とチューナーは、ソニーのチューナーモジュール BTD-VK482Z の中にまとめて入っていると見られる
  * （HDUS の基板写真からの推定。docs/QRS-UT100B.md の「概要」）。
@@ -104,7 +104,7 @@ static const uint8_t TC_REPEATER    = 0xfe; // ここに書くと、続くバイ
 // ---- ASIE5606 のレジスタ ----
 static const uint8_t CARD_CTRL       = 0x00;
 static const uint8_t CARD_04         = 0x04; // 意味は未確認（閉じるときに 0）
-static const uint8_t CARD_TS_MODE    = 0x05; // TS のスクランブルの方式: 0x91 = XOR、0x80 = DES
+static const uint8_t CARD_TS_MODE    = 0x05; // USB 転送の TS にかける暗号の方式: 0x91 = XOR、0x80 = DES
 static const uint8_t CARD_IDENTITY   = 0x09; // 下位 3 ビットが 6 なら DES の版（coax も 0x09 で IC を見分ける）
 static const uint8_t CARD_TS_KEY     = 0x10; // 0x10..0x1f。coax によると普通の書き込みでは効かない
 static const uint8_t CARD_80         = 0x80; // 意味は未確認（閉じるときに 0）
@@ -411,10 +411,10 @@ Hdp::getStream(const uint8_t** bufp, int timeoutMsec)
             break;
         }
 
-	// decrypt
+	// ASIE5606 の USB 転送の DES を外す（B25 のスクランブルはそのまま）
 	uint8_t tmp[188];
 	memcpy(tmp, buffer + pos, 188);
-	asieDescramblePacket(tmp, buffer + out_len);
+	asieDecryptPacket(tmp, buffer + out_len);
 
         pos += tssize;
         out_len += tssize;
@@ -553,7 +553,7 @@ Hdp::UsbProcBegin(int fd)
     send_ctl(data, fd, ASV_HIGH_SPEED, 0x0000, 0x0000, 0x0001);
     usleep (30 * 1000);
 
-    /* TS のスクランブルの方式と鍵（鍵は 0。coax によると、この書き方では効いていない）*/
+    /* USB 転送の TS にかける暗号の方式と鍵（鍵は 0。coax によると、この書き方では効いていない）*/
     regWrite(saddr, CARD_TS_MODE, r5);
     for (uint8_t reg = CARD_TS_KEY; reg < CARD_TS_KEY + 0x10; reg++)
         regWrite(saddr, reg, 0x00);

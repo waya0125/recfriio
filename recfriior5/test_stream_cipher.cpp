@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KASHIWAYA Rikuto
 //
-// AsieDescrambler の試験（make test）。答えは実機と、置き換える前の decrypt.c から取った。
+// AsieStreamCipher（USB 転送の DES を外す処理）の試験（make test）。答えは実機と、置き換える前の decrypt.c から取った。
 
 #include <stdio.h>
 #include <string.h>
-#include "AsieDescrambler.hpp"
+#include "AsieStreamCipher.hpp"
 
 // 実機で受けたヌルパケット（PID 0x1fff、中身は全部 0xff のはず）のスクランブル後の 184 バイト
 static const uint8_t nullPayload[184] = {
@@ -35,7 +35,7 @@ int main()
 
     in[0] = 0x47; in[1] = 0x1f; in[2] = 0xff; in[3] = 0x10;
     memcpy(in + 4, nullPayload, 184);
-    asieDescramblePacket(in, out);
+    asieDecryptPacket(in, out);
     bool allFF = memcmp(out, in, 4) == 0;
     for (int i = 4; i < 188; i++) allFF = allFF && out[i] == 0xff;
     printf("null packet from the tuner: %s\n", allFF ? "ok" : "FAIL");
@@ -43,12 +43,12 @@ int main()
 
     for (int i = 0; i < 188; i++) in[i] = (uint8_t)(i * 7 + 3);
     in[0] = 0x47;
-    asieDescramblePacket(in, out);
+    asieDecryptPacket(in, out);
     bool same = memcmp(out, oldDecryptOutput, 188) == 0;
     printf("same as the old decrypt.c: %s\n", same ? "ok" : "FAIL");
     failures += !same;
 
-    asieDescramblePacket(in, in); // その場で解いても同じ
+    asieDecryptPacket(in, in); // その場で解いても同じ
     bool inPlace = memcmp(in, oldDecryptOutput, 188) == 0;
     printf("in place: %s\n", inPlace ? "ok" : "FAIL");
     failures += !inPlace;

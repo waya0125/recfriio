@@ -28,7 +28,7 @@
 #include <stdio.h>
 #include "usbops.hpp"
 #include "Hdus.hpp"
-#include "AsieDescrambler.hpp"
+#include "AsieStreamCipher.hpp"
 
 static uint8_t xorTable[] = {
   0x6D, 0x4E, 0xF0, 0x1E, 0x59, 0x8B, 0xB2, 0xF0, 0x31, 0xF9, 0xD0, 0x85, 0xDD, 0x84, 0x4A, 0x6C,
@@ -257,7 +257,7 @@ Hdus::getStream(const uint8_t** bufp, int timeoutMsec)
             // DES
             static unsigned char tmp[188];
             memcpy(tmp, buf, 188);
-            asieDescramblePacket(tmp, buffer + out_len);
+            asieDecryptPacket(tmp, buffer + out_len);
         }
 
         pos += tssize;
@@ -476,7 +476,7 @@ Hdus::UsbProcBegin(int fd)
     /* ASV5211 is high speed */
     send_ctl(data, ugen, 0x0a, 0x0000, 0x0000, 0x0001);
     usleep (30 * 1000);
-    /* ASIE decrypt mode configuration */
+    /* ASIE5606 USB transfer cipher mode configuration (not ARIB STD-B25) */
     send_ctl(data, ugen, 0x03, 0x0500 | saddr, r5, 0x0002);
 
     if (r5 == 0x91) {
