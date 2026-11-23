@@ -19,6 +19,9 @@ type Transport interface {
 	Transmit(apdu []byte) ([]byte, error)
 }
 
+// ErrAPDULength は通信方式の上限を超え、リセットしても送れないAPDUを表す。
+var ErrAPDULength = errors.New("APDUの長さが未対応")
+
 var (
 	cmdInitialSetting = []byte{0x90, 0x30, 0x00, 0x00, 0x00}
 	ecmHeader         = []byte{0x90, 0x34, 0x00, 0x00}
@@ -30,6 +33,7 @@ const ecmRetries = 10
 // Card は B-CAS カード。
 type Card struct {
 	t          Transport
+	ecmRetries int
 	systemKey  []byte
 	initCBC    []byte
 	caSystemID int
@@ -40,7 +44,12 @@ type Card struct {
 
 // Open はカードをつなぎ、初期設定の条件を読む。
 func Open(t Transport) (*Card, error) {
-	c := &Card{t: t}
+	return OpenWithECMRetries(t, ecmRetries)
+}
+
+// OpenWithECMRetries は、ECM の失敗時にカードを再接続して試す回数を指定して開く。
+func OpenWithECMRetries(t Transport, retries int) (*Card, error) {
+	c := &Card{t: t, ecmRetries: retries}
 	if err := c.connect(); err != nil {
 		return nil, err
 	}
@@ -81,7 +90,7 @@ func (c *Card) InitCBC() []byte { return c.initCBC }
 func (c *Card) CASystemID() int { return c.caSystemID }
 
 // ProcessECM は ECM をカードに渡してスクランブル鍵を受け取る。
-// 失敗したら、カードをつなぎ直して 10 回まで試す（arib25 と同じ）。
+// 失敗したら、カードをつなぎ直して指定された回数まで試す（既定は 10 回）。
 func (c *Card) ProcessECM(ecm []byte) ([]byte, int, error) {
 	if len(ecm) < 1 || len(ecm) > 0xff {
 		return nil, 0, errors.New("ECM の長さがおかしい")
@@ -89,7 +98,10 @@ func (c *Card) ProcessECM(ecm []byte) ([]byte, int, error) {
 	command := append(append(append([]byte{}, ecmHeader...), byte(len(ecm))), ecm...)
 	command = append(command, 0)
 	r, err := c.t.Transmit(command)
-	for retry := 0; (err != nil || len(r) < 25) && retry < ecmRetries; retry++ {
+	for retry := 0; (err != nil || len(r) < 25) && retry < c.ecmRetries; retry++ {
+		if errors.Is(err, ErrAPDULength) {
+			return nil, 0, err
+		}
 		if cerr := c.connect(); cerr != nil {
 			err = cerr
 			continue

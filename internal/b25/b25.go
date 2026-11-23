@@ -547,7 +547,7 @@ func (d *Decoder) procECM(dec *decryptor) (warn int, err error) {
 		if dec.m2 != nil {
 			dec.m2.ClearScrambleKey()
 		}
-		return 0, fmt.Errorf("%w: %v", ErrECMProcess, err)
+		return 0, fmt.Errorf("%w: %w", ErrECMProcess, err)
 	}
 	if code != 0x0800 && code != 0x0400 && code != 0x0200 {
 		// 契約していない

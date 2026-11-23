@@ -59,8 +59,12 @@ func (b *Bridge) ReadReg(reg uint8) (uint8, error) {
 
 // WriteReg はレジスタを 1 つ書く。
 func (b *Bridge) WriteReg(reg, val uint8) error {
-	if _, err := b.usb.Control(requestTypeOut, reqRegister, 0, uint16(reg), []byte{val}, timeoutMS); err != nil {
+	n, err := b.usb.Control(requestTypeOut, reqRegister, 0, uint16(reg), []byte{val}, timeoutMS)
+	if err != nil {
 		return fmt.Errorf("EM28178 のレジスタ %#02x に %#02x を書けない: %w", reg, val, err)
+	}
+	if n != 1 {
+		return fmt.Errorf("EM28178 のレジスタ %#02x: %d バイトしか書けない", reg, n)
 	}
 	return nil
 }

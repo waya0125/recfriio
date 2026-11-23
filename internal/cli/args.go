@@ -157,7 +157,7 @@ func parseArgs(name string, forced Kind, args []string, stderr io.Writer) (*opti
 		fs.BoolVar(&mtvu3sFlag, "mtvu3s", false, "--u3s と同じ")
 		fs.BoolVar(&hdus, "hdus", false, "（Go 版では使えない。C++ 版はタグ cpp-final）")
 	}
-	fs.BoolVar(&o.b25, "b25", false, "B-CAS カードでスクランブルを外す（ARIB STD-B25）。UT100B は内蔵のスロット、U3S は PC/SC のリーダー")
+	fs.BoolVar(&o.b25, "b25", false, "チューナーの内蔵 B-CAS スロットでスクランブルを外す（ARIB STD-B25）")
 	fs.BoolVar(&o.pcsc, "pcsc", false, "--b25 で PC/SC のカードリーダーを使う（--b25 も付いたことになる）")
 	fs.IntVar(&o.round, "round", 4, "Multi2 の段数")
 	fs.BoolVar(&o.strip, "strip", false, "ヌルパケットを捨てる")

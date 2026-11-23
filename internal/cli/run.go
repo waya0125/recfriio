@@ -164,6 +164,13 @@ loop:
 			if decoder != nil {
 				decoded, err := decoder.Put(packets)
 				if err != nil {
+					if errors.Is(err, bcas.ErrAPDULength) {
+						fmt.Fprintf(log, "B25 Error: %v\n", err)
+						o.exitCode = 1
+						writeErr = write(decoded)
+						decoder = nil
+						break loop
+					}
 					if !synced && o.sync {
 						fmt.Fprintln(log, "Wait for B25 sync")
 						continue
@@ -176,7 +183,10 @@ loop:
 						decoder = nil
 						o.exitCode = 1
 					}
-					continue
+					// U3Sの内蔵カードでECMが失敗しても、消費済みのTSは書き出す。
+					if o.pcsc || t.Kind() != U3S || !errors.Is(err, b25.ErrECMProcess) {
+						continue
+					}
 				}
 				if len(decoded) > 0 {
 					synced = true
@@ -234,11 +244,15 @@ func (d *b25Decoder) Close() {
 	d.closers = nil
 }
 
-// newDecoder は B25 の復号器を作る。--pcsc か、内蔵のスロットを使えない機種（U3S）なら PC/SC のリーダーを使う。
+// newDecoder は B25 の復号器を作る。--pcsc を指定すると外付けリーダーを優先する。
 func newDecoder(o *options, t tuner, log io.Writer) (*b25Decoder, error) {
 	d := &b25Decoder{}
-	transport := t.BuiltinCard(log)
-	if o.pcsc || transport == nil {
+	var transport bcas.Transport
+	if !o.pcsc {
+		transport = t.BuiltinCard(log)
+	}
+	useU3SBuiltin := transport != nil && t.Kind() == U3S
+	if transport == nil {
 		reader, err := pcsc.Open()
 		if err != nil {
 			return nil, err
@@ -258,7 +272,14 @@ func newDecoder(o *options, t tuner, log io.Writer) (*b25Decoder, error) {
 		d.closers = append(d.closers, file)
 		transport = &loggingTransport{t: transport, w: file}
 	}
-	card, err := bcas.Open(transport)
+	var card *bcas.Card
+	var err error
+	if useU3SBuiltin {
+		// カードの待機中は録画側がキューを読めない。連続リセットによる欠落を抑える。
+		card, err = bcas.OpenWithECMRetries(transport, 1)
+	} else {
+		card, err = bcas.Open(transport)
+	}
 	if err != nil {
 		d.Close()
 		return nil, err

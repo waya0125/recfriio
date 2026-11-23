@@ -31,6 +31,7 @@ type fakeCard struct {
 	keys  map[string][]byte
 	calls int
 	fail  bool
+	err   error
 }
 
 func (c *fakeCard) SystemKey() []byte { return systemKey }
@@ -38,6 +39,9 @@ func (c *fakeCard) InitCBC() []byte   { return initCBC }
 func (c *fakeCard) CASystemID() int   { return caSystem }
 func (c *fakeCard) ProcessECM(ecm []byte) ([]byte, int, error) {
 	c.calls++
+	if c.err != nil {
+		return nil, 0, c.err
+	}
 	if c.fail {
 		return nil, 0, errors.New("カードが答えない")
 	}
@@ -81,6 +85,19 @@ func pmt() []byte {
 
 func ecm(n byte) []byte {
 	return makeSection(tableECMS, 1, bytes.Repeat([]byte{n}, 40))
+}
+
+func TestECMErrorKeepsCause(t *testing.T) {
+	cause := errors.New("APDUの長さが未対応")
+	d := New(&fakeCard{err: cause}, 4, false)
+	dec := &decryptor{ecm: newSectionParser()}
+	packet := sectionPacket(ecmPID, 0, ecm(1))
+	if err := dec.ecm.put(ecmPID, true, packet[4:]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.procECM(dec); !errors.Is(err, cause) || !errors.Is(err, ErrECMProcess) {
+		t.Fatalf("ECMエラーの原因を保持していない: %v", err)
+	}
 }
 
 // videoPacket は scrambling（0: そのまま、2: 偶数、3: 奇数）の映像のパケットと、外したときの答え。

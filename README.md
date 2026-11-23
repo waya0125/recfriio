@@ -7,7 +7,7 @@ cgo・libusb・libpcsclite を使わず、Linux の usbfs と pcscd に直接話
 | 機器 | USB ID | 受けられるもの | B25 のカード | 詳しい説明 |
 |---|---|---|---|---|
 | Quixun QRS-UT100B | `3275:7020`（ファーム無しは `1738:5211`） | 地デジ・CATV | 内蔵のスロット | [docs/QRS-UT100B.md](docs/QRS-UT100B.md) |
-| SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | PC/SC のリーダー（内蔵のスロットは使えない） | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
+| SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | 内蔵のスロット | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
 
 C/C++ 版（Friio・HDUS・HDP などの古い機種を含む）は、タグ [`cpp-final`](../../tree/cpp-final) に残しています。
 
@@ -84,7 +84,7 @@ bin/recfriio --b25 27 - -                  # 標準出力に流し続ける（Mi
 | オプション | 意味 |
 |---|---|
 | `--hdp` / `--u3s`（`--mtvu3s`） | 機種を UT100B / U3S に決める（`recut100b`・`recmtvu3s` には無い） |
-| `--b25` | B-CAS カードでスクランブルを外す。UT100B は内蔵のスロット、U3S は PC/SC のリーダーを使う |
+| `--b25` | 録画に使う UT100B または U3S の内蔵 B-CAS スロットでスクランブルを外す |
 | `--pcsc` | `--b25` で外付けのカードリーダーを使う（`--b25` も付いたことになる。pcscd の窓口は `PCSCLITE_CSOCK_NAME` で変えられる） |
 | `--stats` | 終わりに TS のヘッダーを数えた結果（同期・TEI・連続カウンター・PID・PAT の TSID）を書く |
 | `--round N` | MULTI2 の段数（既定 4） |

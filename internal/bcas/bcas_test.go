@@ -75,3 +75,17 @@ func TestECMRetriesWithReconnect(t *testing.T) {
 		t.Fatalf("リセット %d 回", f.resets)
 	}
 }
+
+func TestECMRetryLimit(t *testing.T) {
+	f := &fakeTransport{failECM: 2}
+	c, err := OpenWithECMRetries(f, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.ProcessECM([]byte{1}); err == nil || f.resets != 2 {
+		t.Fatalf("1回の再接続で打ち切らなかった: %d 回, %v", f.resets, err)
+	}
+	if _, _, err := c.ProcessECM([]byte{2}); err != nil {
+		t.Fatalf("次のECMを処理できない: %v", err)
+	}
+}
