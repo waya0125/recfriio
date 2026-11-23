@@ -9,7 +9,8 @@ cgo・libusb・libpcsclite を使わず、Linux の usbfs と pcscd に直接話
 | Quixun QRS-UT100B | `3275:7020`（ファーム無しは `1738:5211`） | 地デジ・CATV | 内蔵のスロット | [docs/QRS-UT100B.md](docs/QRS-UT100B.md) |
 | SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | 内蔵のスロット | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
 
-C/C++ 版（Friio・HDUS・HDP などの古い機種を含む）は、タグ [`cpp-final`](../../tree/cpp-final) に残しています。
+C/C++ 版（Friio・HDUS・HDP などの古い機種を含む）は、タグ [`cpp-final`](../../tree/cpp-final) に残しています。  
+Windows 向けの BonDriver 版は [BonDriver_Friio](https://github.com/waya0125/BonDriver_Friio) にあります。
 
 ## 作り方
 
