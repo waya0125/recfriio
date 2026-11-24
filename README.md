@@ -4,15 +4,32 @@ Linux 向けの USB デジタルテレビチューナー録画プログラム re
 2026-11-19 に、C/C++ の recfriio を Go で書き直したものに置き換えました。  
 cgo・libusb・libpcsclite を使わず、Linux の usbfs と pcscd に直接話す 1 つのバイナリです。
 
+## 対応機種
+
 | 機器 | USB ID | 受けられるもの | B25 のカード | 詳しい説明 |
 |---|---|---|---|---|
 | Quixun QRS-UT100B | `3275:7020`（ファーム無しは `1738:5211`） | 地デジ・CATV | 内蔵のスロット | [docs/QRS-UT100B.md](docs/QRS-UT100B.md) |
 | SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | 内蔵のスロット | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
 
-C/C++ 版（Friio・HDUS・HDP などの古い機種を含む）は、タグ [`cpp-final`](../../tree/cpp-final) に残しています。  
-Windows 向けの BonDriver 版は [BonDriver_Friio](https://github.com/waya0125/BonDriver_Friio) にあります。
+C/C++ 版（Friio・HDUS・HDP などの古い機種を含む）は、タグ [`cpp-final`](../../tree/cpp-final) に残しています。
 
-## 作り方
+## 関連プロジェクト
+
+- Windows（TVTest・EDCB）で使う BonDriver: [BonDriver_Friio](https://github.com/waya0125/BonDriver_Friio)
+- 手元のチューナーの動作確認の一覧: [チューナー動作確認一覧](https://waya0125.github.io/tuners/)
+
+## 必要なもの
+
+- B-CAS カード（本体のスロットに挿す。外付けのカードリーダーを使う場合は `pcscd`）
+- QRS-UT100B: 付属 CD の `Driver` フォルダーにあるローダー（`Quixun_AS11Loader.sys`）。  
+  ここからファームを取り出します。  
+  メーカーのサイトはなくなっていて、[製品ページ](http://web.archive.org/web/20100224054943/http://www.quixun.co.jp:80/product/qrs-ut100b.html)・[サポートページ](http://web.archive.org/web/20100212202729/http://www.quixun.co.jp:80/support/qrs-ut100b.html)が Wayback Machine に残っています。
+- MonsterTV U3S: ファームやメーカーのドライバーは不要です（[製品ページ](https://sknet-web.co.jp/product/mtvu3s/index.html)・[ダウンロード](https://sknet-web.co.jp/product/mtvu3s/download.html)）。
+- BS・CS を受けるときは、アンテナへの電源（U3S）
+
+ファームはメーカーの著作物なので、このリポジトリには含めていません。
+
+## ビルド
 
 Go 1.24 以上が必要です。
 
@@ -47,7 +64,7 @@ SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="3275", ATTR{idPro
 ```
 
 UT100B は、電源が入るたびにファームを送る必要があります。  
-ファームの取り出し方は [docs/QRS-UT100B.md](docs/QRS-UT100B.md#go-版での使い方) にあります。
+ファームの取り出し方は [docs/QRS-UT100B.md](docs/QRS-UT100B.md#2-準備) にあります。
 
 ## 使い方
 
@@ -99,6 +116,12 @@ bin/recfriio --b25 27 - -                  # 標準出力に流し続ける（Mi
 | `--no-descramble` | （U3S だけ）USB 転送の暗号を外さずに書き出す（照合用） |
 
 環境変数 `RECFRIIO_USB_TRACE=1`（`RECUT100B_USB_TRACE=1` も使える）を付けると、UT100B に送る制御転送を全部、標準エラーに書きます。
+
+## 注意事項
+
+- UT100B は電源が入るたびにファームを送る必要があります。
+- `--card-log` の記録には鍵が入ります。人に渡さないでください。
+- 機種ごとの注意は各機種の docs にあります。
 
 ## C/C++ 版の recfriio との違い
 
