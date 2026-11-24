@@ -9,7 +9,7 @@ cgo・libusb・libpcsclite を使わず、Linux の usbfs と pcscd に直接話
 | 機器 | USB ID | 受けられるもの | B25 のカード | 詳しい説明 |
 |---|---|---|---|---|
 | Quixun QRS-UT100B | `3275:7020`（ファーム無しは `1738:5211`） | 地デジ・CATV | 内蔵のスロット | [docs/QRS-UT100B.md](docs/QRS-UT100B.md) |
-| SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | 内蔵のスロット | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
+| SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | 内蔵のスロット（Linux の実機では未確認。外付けのカードリーダーは確認済み） | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
 
 C/C++ 版（Friio・HDUS・HDP などの古い機種を含む）は、タグ [`cpp-final`](../../tree/cpp-final) に残しています。
 
@@ -165,5 +165,5 @@ B25・MULTI2・カードとの通信は、arib25 の出力や、作り物のカ�
 
 - 初期化・選局の手順と値: recfriio（FUKAUMI Naoki、2 条項 BSD）と、その HDP・UT100B の対応（tslroom、stz2012）
 - B25・MULTI2・B-CAS の命令: arib25（茂木 和洋）の移植
-- MonsterTV U3S の部分（`internal/em28178`・`tc90522`・`fc0013`・`qm1d1c0042`・`mtvu3s`・`i2c`・`tscheck`）: waya0125（MIT。移植元の recfriio の U3S の部分も MIT）
+- MonsterTV U3S の部分（`internal/em28178`・`tc90522`・`fc0013`・`qm1d1c0042`・`mtvu3s`・`i2c`・`tscheck`）: waya0125（MIT。移植元の recfriio の U3S の部分も MIT）。U3S 内蔵 B-CAS カード処理（`internal/mtvu3s/card.go` ほか PR #2 のファイル）は n2naokun（MIT）
 - それ以外（`tools/`・`firmware/`・`docs/` を含む）: waya0125（MIT）

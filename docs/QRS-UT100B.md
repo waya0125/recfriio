@@ -35,7 +35,7 @@ bin/ut100b-firmware load asv5211-firmware.bin
 ## 3. 使い方
 
 - 受けられるのは地デジ（`13`〜`62`）と CATV（`C13`〜`C63`）です。
-- UT100B の中の ASIE5606 が USB 転送でかける DES は、いつも外します（放送のスクランブルとは別のもの。外したあとも B25 のスクランブルは残る）。
+- UT100B の中の ASIE5606 が USB 転送でかける DES は、いつも外します（放送のスクランブルとは別のもの。外したあとも B25 のスクランブルは残ります）。
 - `--b25` は内蔵のスロットのカードを使います。外付けのリーダーを使うときは `--pcsc` を付けます。
 - ヌルパケットは UT100B の TS フィルターで捨てているので、`--strip` が無くても出ません（C/C++ 版と同じ）。
 - ほかのプロセスが使っている UT100B は選びません（USB のインターフェースを取れないため）。
@@ -298,5 +298,4 @@ UT100B の TS は、復調器から ASIE5606 を通ってブリッジ（ASV5211�
   cgo・libusb・libpcsclite を使わない 1 つのバイナリ。
 - [ ] **coax への統合**: `Till0196/coax` に QRS-UT100B（`asv5211` + `asie5606`）のボードとして足す。  
   このリポジトリの `internal/ut100b` と `testdata/usb-trace-hdp-ch19.txt` を元にする。
-- [ ] **Windows 版の現代化**:
-  - レガシーな未署名 .sys ドライバ（XP/Vista 時代）に依存せず、WinUSB 直結で Windows 11 等でも署名問題なく直挿し動作可能にする。
+- [x] **Windows 版の現代化**: [BonDriver_Friio](https://github.com/waya0125/BonDriver_Friio) として WinUSB 直接呼び出しで実装済み（自動ファーム転送・内蔵 B-CAS 対応）。
