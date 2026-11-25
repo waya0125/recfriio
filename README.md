@@ -114,6 +114,7 @@ bin/recfriio --b25 27 - -                  # 標準出力に流し続ける（Mi
 | `--firmware FILE` | （UT100B だけ）ファームの無い UT100B しか無ければ、これを送ってから使う |
 | `--no-settle` | （U3S だけ）受け始めの、復調部が落ち着く前のパケットも捨てずに書き出す |
 | `--no-descramble` | （U3S だけ）USB 転送の暗号を外さずに書き出す（照合用） |
+| `--tsid 0x4092` | （U3S だけ）BS・CS で選ぶ TS を TSID で直接渡す。`BSnn_s` の `s` より優先 |
 
 環境変数 `RECFRIIO_USB_TRACE=1`（`RECUT100B_USB_TRACE=1` も使える）を付けると、UT100B に送る制御転送を全部、標準エラーに書きます。
 

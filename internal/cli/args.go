@@ -151,6 +151,7 @@ func parseArgs(name string, forced Kind, args []string, stderr io.Writer) (*opti
 		fs.PrintDefaults()
 	}
 	var hdp, u3s, mtvu3sFlag, hdus bool
+	var tsidStr string
 	if forced == Any {
 		fs.BoolVar(&hdp, "hdp", false, "QRS-UT100B を使う（C++ 版の recfriio と同じ書き方）")
 		fs.BoolVar(&u3s, "u3s", false, "MonsterTV U3S を使う（C++ 版の recfriio と同じ書き方）")
@@ -172,6 +173,7 @@ func parseArgs(name string, forced Kind, args []string, stderr io.Writer) (*opti
 	if forced != UT100B {
 		fs.BoolVar(&o.noSettle, "no-settle", false, "（U3S）受け始めの、復調部が落ち着く前のパケット（TEI 付き）も捨てずに書き出す")
 		fs.BoolVar(&o.noDescramble, "no-descramble", false, "（U3S）EM28178 の USB 転送の暗号を外さずに書き出す（照合用）")
+		fs.StringVar(&tsidStr, "tsid", "", "（U3S）BS・CS で選ぶ TS を TSID で直接渡す（例: 0x40f1）。BSnn_s の s より優先")
 	}
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -198,6 +200,16 @@ func parseArgs(name string, forced Kind, args []string, stderr io.Writer) (*opti
 	}
 	if !ch.accepts(o.kind) {
 		return nil, fmt.Errorf("%s では チャンネル %s を受けられない", o.kind, fs.Arg(0))
+	}
+	if tsidStr != "" {
+		v, err := strconv.ParseUint(tsidStr, 0, 16)
+		if err != nil || v == 0 {
+			return nil, fmt.Errorf("--tsid %q が読めない（例: 0x40f1）", tsidStr)
+		}
+		if !ch.u3sOK || ch.u3s.Band == mtvu3s.BandUHF {
+			return nil, fmt.Errorf("--tsid は BS・CS のチャンネルにだけ使える（%s）", fs.Arg(0))
+		}
+		ch.u3s.TSID = uint16(v)
 	}
 	o.channel = ch
 	if fs.Arg(1) != "-" {

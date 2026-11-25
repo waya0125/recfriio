@@ -105,6 +105,12 @@ func TestI2CMatchesRecfriio(t *testing.T) {
 		c, err := ParseChannel(fmt.Sprintf("BS%02d_0", node))
 		must(err)
 		fmt.Fprintf(&bus.out, "# BS %d\n", node)
+		// 記録は C++ 版の recfriio が頼んでいた TSID（0x4000 | nn<<4 | s、BS15 だけ +1）で取ってある。
+		// いまは TMCC の一覧の並びで選ぶ（PickTSID）が、I2C の書き込みの照合にはこの値を渡す。
+		c.TSID = uint16(0x4000 | node<<4)
+		if node == 15 {
+			c.TSID++
+		}
 		tuneSat(c)
 	}
 	for n := 2; n <= 24; n += 2 {
