@@ -9,7 +9,7 @@ cgo・libusb・libpcsclite を使わず、Linux の usbfs と pcscd に直接話
 | 機器 | USB ID | 受けられるもの | B25 のカード | 詳しい説明 |
 |---|---|---|---|---|
 | Quixun QRS-UT100B | `3275:7020`（ファーム無しは `1738:5211`） | 地デジ・CATV | 内蔵のスロット | [docs/QRS-UT100B.md](docs/QRS-UT100B.md) |
-| SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | 内蔵のスロット（Linux の実機では未確認。外付けのカードリーダーは確認済み） | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
+| SKNET MonsterTV U3S | `3275:9015` | 地デジ・BS・CS | 内蔵のスロット（地デジ・BS で確認済み。外付けのカードリーダーも使える） | [docs/SK-MTVU3S.md](docs/SK-MTVU3S.md) |
 
 C/C++ 版（Friio・HDUS・HDP などの古い機種を含む）は、タグ [`cpp-final`](../../tree/cpp-final) に残しています。
 
@@ -116,6 +116,51 @@ bin/recfriio --b25 27 - -                  # 標準出力に流し続ける（Mi
 | `--no-descramble` | （U3S だけ）USB 転送の暗号を外さずに書き出す（照合用） |
 
 環境変数 `RECFRIIO_USB_TRACE=1`（`RECUT100B_USB_TRACE=1` も使える）を付けると、UT100B に送る制御転送を全部、標準エラーに書きます。
+
+### Mirakurun（`tuners.yml`）の設定例
+
+`recfriio` は `--b25` で、録画に使う機器の内蔵 B-CAS スロットを使ってスクランブルを外します。  
+そのため `decoder` は指定しません（`~`）。
+
+UT100B と U3S を両方つなぐ場合は、`--hdp`・`--u3s` で機種を決めておくと、チューナーを取り合いません。  
+U3S は 1 チューナーなので、1 台で地デジと BS・CS を同時には受けられません。  
+U3S だけで地デジ・BS・CS を全部受ける場合は、`types` を 1 つのエントリにまとめます。
+
+```yaml
+# U3S 1 台だけのとき
+- name: MonsterTV-U3S
+  types:
+    - GR
+    - BS
+    - CS
+  command: /usr/local/bin/recfriio --u3s --b25 --strip <channel> - -
+  decoder: ~
+  isDisabled: false
+```
+
+```yaml
+# UT100B（地デジ）と U3S（BS・CS）を両方つなぐとき
+- name: QRS-UT100B
+  types:
+    - GR
+  command: /usr/local/bin/recfriio --hdp --b25 --strip --firmware /usr/local/lib/recfriio/ut100b.fw <channel> - -
+  decoder: ~
+  isDisabled: false
+
+- name: MonsterTV-U3S
+  types:
+    - BS
+    - CS
+  command: /usr/local/bin/recfriio --u3s --b25 --strip <channel> - -
+  decoder: ~
+  isDisabled: false
+```
+
+- `--firmware` は、ファームの無い UT100B しか無いときに、それを送ってから使うためのものです（電源を入れ直した直後など）。ファームの置き場所は手元に合わせてください。
+- `channels.yml` のチャンネルは、`recfriio` の引数と同じ形（`21`、`BS15_0`、`CS2`）で書きます。
+- 内蔵カードの初期化に失敗すると、スクランブルを外さずに流し続けます（終了コード 1、標準エラーに `disable b25 decoding.`）。映像が出ないときは Mirakurun のログを見てください。
+- U3S の内蔵スロットは、ECM の APDU が 124 バイトを超えるとエラーで止まります。その場合は `--b25` を `--pcsc`（外付けのカードリーダー）に替えてください。
+- コマンド単体での内蔵カードの録画は確かめてあります（[docs/SK-MTVU3S.md](docs/SK-MTVU3S.md#4-動作確認の記録)）。この設定で Mirakurun から使うところは、まだ実機で確かめていません。
 
 ## 注意事項
 
