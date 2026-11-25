@@ -191,7 +191,7 @@ func (d *Device) Tune(ch Channel) (TuneResult, error) {
 	if ch.Band == BandUHF {
 		return d.tuneTer(ch.FreqKHz)
 	}
-	return d.tuneSat(ch.FreqKHz, ch.TSID)
+	return d.tuneSat(ch)
 }
 
 func (d *Device) tuneTer(freqKHz uint32) (TuneResult, error) {
@@ -230,7 +230,8 @@ func (d *Device) tuneTer(freqKHz uint32) (TuneResult, error) {
 	return TuneResult{Locked: locked}, nil
 }
 
-func (d *Device) tuneSat(freqKHz uint32, tsid uint16) (TuneResult, error) {
+func (d *Device) tuneSat(ch Channel) (TuneResult, error) {
+	freqKHz := ch.FreqKHz
 	if err := d.Ter.SetTerActive(false); err != nil {
 		return TuneResult{}, err
 	}
@@ -265,8 +266,12 @@ func (d *Device) tuneSat(freqKHz uint32, tsid uint16) (TuneResult, error) {
 	}, tc90522.SatLockTries, tc90522.SatLockInterval); err != nil {
 		return TuneResult{}, err
 	}
-	want, ok := MatchTSID(tsid, ids)
-	fmt.Fprintf(d.Log, "ISDB-S TMCC TSIDs: %#04x (want %#04x -> %#04x)\n", ids, tsid, want)
+	want, ok := ch.PickTSID(ids)
+	if ch.TSID == 0 && ch.Slot >= 0 {
+		fmt.Fprintf(d.Log, "ISDB-S TMCC TSIDs: %#04x (want slot %d -> %#04x)\n", ids, ch.Slot, want)
+	} else {
+		fmt.Fprintf(d.Log, "ISDB-S TMCC TSIDs: %#04x (want %#04x -> %#04x)\n", ids, ch.TSID, want)
+	}
 	if !ok {
 		// 無い TS を頼むと、復調部は黙って別の TS（一覧の最初など）を出すので、ここで止める
 		var have []uint16
@@ -275,7 +280,10 @@ func (d *Device) tuneSat(freqKHz uint32, tsid uint16) (TuneResult, error) {
 				have = append(have, id)
 			}
 		}
-		return TuneResult{}, fmt.Errorf("TSID %#04x の TS は、いまこのトランスポンダーに無い（あるのは %#04x）", tsid, have)
+		if ch.TSID == 0 && ch.Slot >= 0 {
+			return TuneResult{}, fmt.Errorf("%s: このトランスポンダーの TS は %d 個で、%d 番目は無い（あるのは %#04x）", ch.Name, len(have), ch.Slot, have)
+		}
+		return TuneResult{}, fmt.Errorf("TSID %#04x の TS は、いまこのトランスポンダーに無い（あるのは %#04x）", ch.TSID, have)
 	}
 	selected, err := d.Sat.SelectSatTSID(want)
 	if err != nil {

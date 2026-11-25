@@ -66,13 +66,19 @@ func TestParseArgsRecfriio(t *testing.T) {
 			t.Errorf("%v: kind=%v ut=%v u3s=%v", c.args, o.kind, o.channel.ut100bOK, o.channel.u3sOK)
 		}
 	}
-	if o, _ := parseArgs("recfriio", Any, []string{"BS15_0", "10", "x"}, io.Discard); o.channel.u3s.TSID != 0x40f1 {
-		t.Errorf("BS15_0 の TSID %#04x", o.channel.u3s.TSID)
+	if o, _ := parseArgs("recfriio", Any, []string{"BS15_0", "10", "x"}, io.Discard); o.channel.u3s.TSID != 0 || o.channel.u3s.Slot != 0 {
+		t.Errorf("BS15_0 の TSID %#04x・スロット %d", o.channel.u3s.TSID, o.channel.u3s.Slot)
+	}
+	if o, err := parseArgs("recfriio", Any, []string{"--tsid", "0x4092", "BS09_1", "10", "x"}, io.Discard); err != nil || o.channel.u3s.TSID != 0x4092 {
+		t.Errorf("--tsid 0x4092 BS09_1: %v", err)
 	}
 	for _, bad := range [][]string{
 		{"--hdp", "BS15_0", "10", "x"},
 		{"--u3s", "C13", "10", "x"},
 		{"--hdp", "--u3s", "21", "10", "x"},
+		{"--tsid", "0x4092", "21", "10", "x"},
+		{"--tsid", "zz", "BS09_1", "10", "x"},
+		{"--tsid", "0", "BS09_1", "10", "x"},
 		{"--hdus", "21", "10", "x"},
 		{"BS2_0", "10", "x"},
 	} {

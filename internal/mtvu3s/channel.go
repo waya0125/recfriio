@@ -53,10 +53,34 @@ type Channel struct {
 	Name    string
 	Band    Band
 	FreqKHz uint32
-	// TSID は衛星で選ぶ TS。0 なら TMCC にある最初のもの。
-	// BS は recfriio と同じく登録年のビット（0x0e00）を 0 にして組み立てるので、
+	// TSID は衛星で選ぶ TS（--tsid で直接渡したときと CS）。
+	// 0 なら、BS は Slot で選び、それ以外は TMCC にある最初のもの。
 	// 選ぶときに TMCC の一覧と突き合わせる（MatchTSID）。
 	TSID uint16
+	// Slot は BS の「BSnn_s」の s。そのトランスポンダーの何番目の TS か
+	// （TMCC の一覧から空きを除いた並びで数える。recpt1・recisdb・Mirakurun の channels.yml と同じ読み方）。
+	// BS 以外は -1。
+	Slot int
+}
+
+// PickTSID は、TMCC の TSID の一覧 ids から、このチャンネルで選ぶ TSID を決める。
+// TSID が決まっていればそれを MatchTSID で当て、BS で TSID が 0 なら Slot 番目（空きを除く）を選ぶ。
+// 選べなければ ok が false で、id は頼んだもの（Slot で選ぶときは 0）。
+func (c Channel) PickTSID(ids []uint16) (id uint16, ok bool) {
+	if c.TSID != 0 || c.Band != BandBS || c.Slot < 0 {
+		return MatchTSID(c.TSID, ids)
+	}
+	n := 0
+	for _, id := range ids {
+		if IsTMCCPlaceholder(id) {
+			continue
+		}
+		if n == c.Slot {
+			return id, true
+		}
+		n++
+	}
+	return 0, false
 }
 
 // bsYearMask は BS の TSID のうち、登録年のビット。
@@ -102,7 +126,7 @@ func IsTMCCPlaceholder(id uint16) bool { return id >= 0xfff0 }
 // ParseChannel はチャンネルの書き方を読む（recfriio の --u3s と同じ）。
 //
 //	13〜62    UHF
-//	BSnn_s    BS（nn は 1〜23 の奇数、s は 0〜7）
+//	BSnn_s    BS（nn は 1〜23 の奇数、s は 0〜7。s はトランスポンダーの何番目の TS か）
 //	CSnn      110 度 CS（nn は 2〜24 の偶数）
 func ParseChannel(s string) (Channel, error) {
 	up := strings.ToUpper(s)
@@ -117,15 +141,14 @@ func ParseChannel(s string) (Channel, error) {
 		if err != nil || len(slot) != 1 || sl < 0 || sl > 7 {
 			return Channel{}, fmt.Errorf("BS のチャンネル %q: スロットは 0〜7（例: BS15_0）", s)
 		}
-		// ARIB の決まりで BS15 は 1 つずれる（recfriio と同じ。古い受信機への配慮）
-		if n == 15 {
-			sl++
-		}
+		// C++ 版の recfriio は s を TSID の下位 4 ビットとして 0x4000 | nn<<4 | s を頼んでいた
+		// （BS15 だけ 1 つずらす）。再編で TS の番号が飛んだトランスポンダー（BS09・BS23 など）で
+		// channels.yml と食い違うので、s は TMCC の一覧の並び（Slot）として選ぶ（issue #4）。
 		return Channel{
 			Name:    fmt.Sprintf("BS%02d_%s", n, slot),
 			Band:    BandBS,
 			FreqKHz: bsBaseKHz + uint32((n-1)/2)*bsStepKHz,
-			TSID:    uint16(0x4000 | n<<4 | sl),
+			Slot:    sl,
 		}, nil
 	case strings.HasPrefix(up, "CS"):
 		n, err := strconv.Atoi(up[2:])
@@ -137,6 +160,7 @@ func ParseChannel(s string) (Channel, error) {
 			Band:    BandCS,
 			FreqKHz: csBaseKHz + uint32(n/2-1)*csStepKHz,
 			TSID:    csTSIDs[n],
+			Slot:    -1,
 		}, nil
 	}
 	n, err := strconv.Atoi(s)
@@ -147,5 +171,6 @@ func ParseChannel(s string) (Channel, error) {
 		Name:    strconv.Itoa(n),
 		Band:    BandUHF,
 		FreqKHz: uhfBaseKHz + uint32(n-13)*uhfStepKHz,
+		Slot:    -1,
 	}, nil
 }

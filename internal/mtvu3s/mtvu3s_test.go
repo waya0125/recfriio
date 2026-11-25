@@ -17,24 +17,26 @@ func TestParseChannel(t *testing.T) {
 		band Band
 		freq uint32
 		tsid uint16
+		slot int
 	}{
-		{"13", BandUHF, 473143, 0},
-		{"21", BandUHF, 521143, 0},
-		{"62", BandUHF, 767143, 0},
-		{"BS01_0", BandBS, 1049480, 0x4010},
-		{"bs15_0", BandBS, 1049480 + 7*38360, 0x40f1}, // BS15 は 1 つずれる
-		{"BS23_2", BandBS, 1049480 + 11*38360, 0x4172},
-		{"CS2", BandCS, 1613000, 0x6020},
-		{"CS24", BandCS, 1613000 + 11*40000, 0x7180},
-		{"CS8", BandCS, 1613000 + 3*40000, 0x6080},
-		{"CS10", BandCS, 1613000 + 4*40000, 0x60a0},
+		{"13", BandUHF, 473143, 0, -1},
+		{"21", BandUHF, 521143, 0, -1},
+		{"62", BandUHF, 767143, 0, -1},
+		{"BS01_0", BandBS, 1049480, 0, 0},
+		{"bs15_0", BandBS, 1049480 + 7*38360, 0, 0}, // BS15 もずらさない（TMCC の並びで選ぶ）
+		{"BS23_2", BandBS, 1049480 + 11*38360, 0, 2},
+		{"BS09_1", BandBS, 1049480 + 4*38360, 0, 1},
+		{"CS2", BandCS, 1613000, 0x6020, -1},
+		{"CS24", BandCS, 1613000 + 11*40000, 0x7180, -1},
+		{"CS8", BandCS, 1613000 + 3*40000, 0x6080, -1},
+		{"CS10", BandCS, 1613000 + 4*40000, 0x60a0, -1},
 	}
 	for _, c := range cases {
 		got, err := ParseChannel(c.in)
 		if err != nil {
 			t.Fatalf("%s: %v", c.in, err)
 		}
-		if got.Band != c.band || got.FreqKHz != c.freq || got.TSID != c.tsid {
+		if got.Band != c.band || got.FreqKHz != c.freq || got.TSID != c.tsid || got.Slot != c.slot {
 			t.Errorf("%s = %+v", c.in, got)
 		}
 	}
@@ -188,6 +190,50 @@ func TestMatchTSID(t *testing.T) {
 		if got, ok := MatchTSID(c.want, ids); got != c.got || ok != c.ok {
 			t.Errorf("MatchTSID(%#04x) = %#04x, %v; want %#04x, %v", c.want, got, ok, c.got, c.ok)
 		}
+	}
+}
+
+// TestPickTSIDBySlot は、BSnn_s の s を TMCC の一覧の並びとして選ぶこと（issue #4）。
+// BS09・BS23 の一覧は実機（2026-11-25、issue #4 のログ）、BS15・BS01 は conf から組み立てたもの。期待する TSID は recisdb 1.3.2 の
+// dvbv5_channels_isdbs.conf（Mirakurun の channels.yml と同じ名前）の値。
+func TestPickTSIDBySlot(t *testing.T) {
+	cases := []struct {
+		ch   string
+		ids  []uint16
+		want uint16
+		ok   bool
+	}{
+		{"BS09_0", []uint16{0x4090, 0x4092, 0xfff9}, 0x4090, true},
+		{"BS09_1", []uint16{0x4090, 0x4092, 0xfff9}, 0x4092, true}, // 下位ビットで読むと 0x4091 で受からなかった
+		{"BS09_2", []uint16{0x4090, 0x4092, 0xfff9}, 0, false},
+		{"BS23_0", []uint16{0x4770, 0x4971, 0x4973, 0xfff9}, 0x4770, true},
+		{"BS23_1", []uint16{0x4770, 0x4971, 0x4973, 0xfff9}, 0x4971, true},
+		{"BS23_2", []uint16{0x4770, 0x4971, 0x4973, 0xfff9}, 0x4973, true}, // 下位ビットで読むと 0x4172 で受からなかった
+		{"BS15_0", []uint16{0x40f1, 0x40f2, 0x48f3}, 0x40f1, true},         // BS15 も 1 つずらさない
+		{"BS15_2", []uint16{0x40f1, 0x40f2, 0x48f3}, 0x48f3, true},
+		{"BS01_1", []uint16{0xfff8, 0x4010, 0x4011, 0x4012}, 0x4011, true}, // 空きは数えない
+		{"BS01_0", []uint16{0xfff8}, 0, false},
+	}
+	for _, c := range cases {
+		ch, err := ParseChannel(c.ch)
+		if err != nil {
+			t.Fatalf("%s: %v", c.ch, err)
+		}
+		if got, ok := ch.PickTSID(c.ids); got != c.want || ok != c.ok {
+			t.Errorf("%s.PickTSID(%#04x) = %#04x, %v; want %#04x, %v", c.ch, c.ids, got, ok, c.want, c.ok)
+		}
+	}
+
+	// --tsid で TSID を渡したときは、スロットより TSID を優先し、登録年のビットを無視して当てる
+	ch, _ := ParseChannel("BS23_0")
+	ch.TSID = 0x4173
+	if got, ok := ch.PickTSID([]uint16{0x4770, 0x4971, 0x4973}); got != 0x4973 || !ok {
+		t.Errorf("--tsid 0x4173 BS23_0 = %#04x, %v", got, ok)
+	}
+	// CS はこれまでどおり表の TSID
+	ch, _ = ParseChannel("CS8")
+	if got, ok := ch.PickTSID([]uint16{0x6080, 0xfff8}); got != 0x6080 || !ok {
+		t.Errorf("CS8 = %#04x, %v", got, ok)
 	}
 }
 
