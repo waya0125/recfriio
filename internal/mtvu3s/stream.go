@@ -71,6 +71,13 @@ type Aligner struct {
 // NewAligner は Aligner を作る。
 func NewAligner() *Aligner { return &Aligner{Log: io.Discard} }
 
+// ResetSync は USB 転送の欠落などでバイト列が途切れたときに呼ぶ。
+// 半端な残りを捨てて、次の Feed で 0x47 の並びからつかみ直す。
+func (a *Aligner) ResetSync() {
+	a.buf = a.buf[:0]
+	a.synced = false
+}
+
 // Feed は chunk を受け取り、切り出したパケットを返す（188 の倍数の長さ）。半端は次まで持つ。
 func (a *Aligner) Feed(chunk []byte) []byte {
 	a.buf = append(a.buf, chunk...)

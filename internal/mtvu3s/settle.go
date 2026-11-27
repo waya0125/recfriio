@@ -36,6 +36,16 @@ func NewSettler() *Settler {
 // Settled は流し始めたか。
 func (s *Settler) Settled() bool { return s.done }
 
+// ResetRun は落ち着く前の連続カウントを戻す（落ち着いたあとは何もしない）。
+func (s *Settler) ResetRun() {
+	if s.done {
+		return
+	}
+	s.Dropped += s.run
+	s.run = 0
+	s.pending = s.pending[:0]
+}
+
 // Feed は 188 の倍数の長さの packets を受け取り、流してよいものを返す。
 // 落ち着くまでは、きれいなパケットが続いている所を手元に持っておき、
 // Clean 個そろったら、それも含めて流す（落ち着いた所から先は 1 つも捨てない）。

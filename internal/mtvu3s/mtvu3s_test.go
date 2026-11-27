@@ -274,4 +274,58 @@ func TestSettler(t *testing.T) {
 	if out := g.Feed(bad); !g.GaveUp || len(out) != 2*PacketSize {
 		t.Fatalf("gaveup=%v len=%d", g.GaveUp, len(out))
 	}
+
+	// ResetRun は落ち着く前の連続カウントだけを戻し、落ち着いたあとは何もしない
+	r := &Settler{Clean: 3, MaxDrop: 100}
+	if out := r.Feed(append(packet(0x100, 0), packet(0x100, 1)...)); out != nil {
+		t.Fatalf("まだ流さないはず: %d バイト", len(out))
+	}
+	r.ResetRun()
+	if r.Dropped != 2 || r.Settled() {
+		t.Fatalf("ResetRun 後: dropped=%d settled=%v", r.Dropped, r.Settled())
+	}
+	var three []byte
+	for i := range 3 {
+		three = append(three, packet(0x100, uint8(i))...)
+	}
+	if out := r.Feed(three); !r.Settled() || len(out) != 3*PacketSize {
+		t.Fatalf("ResetRun 後の再成立に失敗: settled=%v len=%d", r.Settled(), len(out))
+	}
+	r.ResetRun()
+	if !r.Settled() || r.Dropped != 2 {
+		t.Fatalf("落ち着いたあとの ResetRun で状態が変わった: settled=%v dropped=%d", r.Settled(), r.Dropped)
+	}
+}
+
+func TestAlignerResetSync(t *testing.T) {
+	a := NewAligner()
+	var head []byte
+	for i := range 4 {
+		head = append(head, packet(0x100, uint8(i))...)
+	}
+	// 末尾に半端な 50 バイトを残した状態でギャップが起きる
+	head = append(head, packet(0x100, 4)[:50]...)
+	out1 := a.Feed(head)
+	if len(out1) != 4*PacketSize {
+		t.Fatalf("len(out1)=%d, want %d", len(out1), 4*PacketSize)
+	}
+
+	a.ResetSync()
+
+	// ギャップ後はゴミ 17 バイトのあとに正常パケットが 4 つ続く
+	var tail []byte
+	tail = append(tail, make([]byte, 17)...)
+	for i := 5; i < 9; i++ {
+		tail = append(tail, packet(0x100, uint8(i))...)
+	}
+	out2 := a.Feed(tail)
+	if len(out2) != 4*PacketSize {
+		t.Fatalf("len(out2)=%d, want %d", len(out2), 4*PacketSize)
+	}
+	if a.BadSync != 0 || a.Resyncs != 1 {
+		t.Fatalf("badsync=%d resyncs=%d, want 0 and 1", a.BadSync, a.Resyncs)
+	}
+	if !bytes.Equal(out2[:PacketSize], packet(0x100, 5)) {
+		t.Fatal("ResetSync 後の最初のパケットがずれている")
+	}
 }

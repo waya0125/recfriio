@@ -38,6 +38,8 @@ type tuner interface {
 // feeder は USB から届いたバイト列を受け、書き出してよい TS のパケットを返す。
 type feeder interface {
 	Feed(chunk []byte) []byte
+	// ResetGap は USB 転送の欠落（ギャップ）を受けたときに端数を捨てて再同期へ戻す
+	ResetGap()
 	// Report は終わりに、つかみ直しなどの数を書く
 	Report(log io.Writer)
 }
@@ -176,6 +178,10 @@ func (t *ut100bTuner) Close() error { return t.dev.Close() }
 
 type ut100bFeeder struct{ *ut100b.Aligner }
 
+func (f ut100bFeeder) ResetGap() {
+	f.Aligner.ResetSync()
+}
+
 func (f ut100bFeeder) Report(log io.Writer) {
 	if f.Resyncs > 0 {
 		fmt.Fprintf(log, "TS: %d resyncs\n", f.Resyncs)
@@ -236,6 +242,13 @@ func (f *u3sFeeder) Feed(chunk []byte) []byte {
 		packets = f.settler.Feed(packets)
 	}
 	return packets
+}
+
+func (f *u3sFeeder) ResetGap() {
+	f.aligner.ResetSync()
+	if f.settler != nil {
+		f.settler.ResetRun()
+	}
 }
 
 func (f *u3sFeeder) Report(log io.Writer) {

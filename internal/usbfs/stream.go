@@ -31,7 +31,7 @@ type Stream struct {
 	isoPackets    int
 	isoPacketSize int
 
-	// Chunks に、届いた順にデータが流れる。Stop のあとで閉じられる。
+	// Chunks に、届いた順にデータが流れる。空のスライス（nil）は転送の欠落（ギャップ）の通知。Stop のあとで閉じられる。
 	Chunks chan []byte
 
 	mu          sync.Mutex
@@ -183,14 +183,9 @@ func (s *Stream) run() {
 			if u.status != 0 {
 				s.Errors++
 				s.LastError = syscall.Errno(-u.status)
+				s.sendChunk(nil)
 			}
-			if chunk := s.collect(i); len(chunk) > 0 {
-				select {
-				case s.Chunks <- chunk:
-				default:
-					s.Dropped++
-				}
-			}
+			s.collectAndEmit(i)
 		}
 		s.mu.Lock()
 		if s.stopping {
@@ -204,33 +199,57 @@ func (s *Stream) run() {
 	}
 }
 
-// collect は URB i に届いたデータを写して返す。
-// isochronous なら、うまく届いたフレームだけを順につなぐ（フレームは isoPacketSize ごとに置かれる）。
-func (s *Stream) collect(i int) []byte {
+func (s *Stream) sendChunk(chunk []byte) {
+	select {
+	case s.Chunks <- chunk:
+	default:
+		s.Dropped++
+	}
+}
+
+// collectAndEmit は URB i に届いたデータを Chunks へ流す。
+// isochronous なら、うまく届いたフレームを順につなぎ、失敗したフレームの境目で nil（ギャップ通知）を挟む。
+func (s *Stream) collectAndEmit(i int) {
 	u := s.urbs[i]
 	base := s.offset(i)
 	if s.isoPackets == 0 {
 		n := int(u.actualLength)
 		if n <= 0 {
-			return nil
+			return
 		}
 		chunk := make([]byte, n)
 		copy(chunk, s.memory[base:base+n])
-		return chunk
+		s.sendChunk(chunk)
+		return
 	}
-	chunk := make([]byte, 0, int(u.actualLength))
+	var chunk []byte
+	inGap := false
 	for f, frame := range s.frames(i) {
 		if frame.status != 0 {
 			s.FrameErrors++
+			if len(chunk) > 0 {
+				s.sendChunk(chunk)
+				chunk = nil
+			}
+			if !inGap {
+				s.sendChunk(nil)
+				inGap = true
+			}
 			continue
 		}
+		inGap = false
 		n := min(int(frame.actualLength), s.isoPacketSize)
 		if n > 0 {
+			if chunk == nil {
+				chunk = make([]byte, 0, int(u.actualLength))
+			}
 			start := base + f*s.isoPacketSize
 			chunk = append(chunk, s.memory[start:start+n]...)
 		}
 	}
-	return chunk
+	if len(chunk) > 0 {
+		s.sendChunk(chunk)
+	}
 }
 
 func (s *Stream) offset(i int) int {

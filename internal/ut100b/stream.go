@@ -35,6 +35,12 @@ func NewAligner() *Aligner {
 	return &Aligner{stale: StaleDiscardBytes, d: asie5606.NewStreamCipher(), Log: io.Discard}
 }
 
+// ResetSync は USB 転送の欠落などでバイト列が途切れたときに呼ぶ。
+// 半端な残りを捨てて、次の Feed で 0x47 から合わせ直す。
+func (a *Aligner) ResetSync() {
+	a.rest = nil
+}
+
 // Feed は chunk を受け取り、DES を外したパケットを返す（188 の倍数の長さ）。
 // 半端な残りは次の Feed まで持っておく。
 func (a *Aligner) Feed(chunk []byte) []byte {

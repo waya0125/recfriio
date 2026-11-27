@@ -147,6 +147,10 @@ loop:
 				fmt.Fprintln(log, "the USB stream ended.")
 				break loop
 			}
+			if len(chunk) == 0 {
+				feed.ResetGap()
+				continue
+			}
 			packets := feed.Feed(chunk)
 			if len(packets) == 0 {
 				// 受け始めの捨てている間など。空のまま B25 に渡すと「TS ではない入力」で失敗を数えてしまう
