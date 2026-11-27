@@ -38,8 +38,8 @@ func TestCollectAndEmitIsoGap(t *testing.T) {
 	frames[0] = isoFrameDesc{length: isoPacketSize, actualLength: 4, status: 0}
 	copy(mem[base:], "AAAA")
 	// frame 1, 2: 連続エラー（ギャップ通知は 1 回にまとめる）
-	frames[1] = isoFrameDesc{length: isoPacketSize, actualLength: 0, status: -71}
-	frames[2] = isoFrameDesc{length: isoPacketSize, actualLength: 0, status: -71}
+	frames[1] = isoFrameDesc{length: isoPacketSize, actualLength: 0, status: 1}
+	frames[2] = isoFrameDesc{length: isoPacketSize, actualLength: 0, status: 1}
 	// frame 3: OK ("BBBB")
 	frames[3] = isoFrameDesc{length: isoPacketSize, actualLength: 4, status: 0}
 	copy(mem[base+3*isoPacketSize:], "BBBB")
